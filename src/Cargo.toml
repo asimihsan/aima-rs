@@ -1,0 +1,19 @@
+[workspace]
+
+members = [
+    "bin/ch02-ex11-run-reflex-agent-once",
+    "bin/ch02-ex12-evaluate-reflex-agent",
+    "bin/neural-networks-test",
+    "lib/monte-carlo-tree-search",
+    "lib/neural-networks",
+    "lib/vacuum-cleaner",
+]
+
+[profile.release]
+opt-level = 3
+
+[profile.production]
+inherits = "release"
+lto = true
+codegen-units = 1
+incremental = false
