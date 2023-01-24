@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 
 trait Action: Clone + Copy + PartialEq + Eq + Hash {}
-trait Float: Clone + Copy + num_traits::Float {}
+trait Float: Clone + Copy + num_traits::real::Real {}
 trait Int: Clone + Copy + num_traits::Num + num_traits::NumCast + num_traits::FromPrimitive {}
 trait State {}
 
@@ -101,17 +101,6 @@ where
         self.nodes[parent].children.insert(action, child);
         child
     }
-
-    fn add_mut_child(
-        &mut self,
-        state: _State,
-        parent: MctsNodeKey,
-        action: _Action,
-    ) -> &mut MctsNode<_Action, _Int, _State> {
-        let child = self.nodes.insert(MctsNode::new(Some(parent), state));
-        self.nodes[parent].children.insert(action, child);
-        &mut self.nodes[child]
-    }
 }
 
 // SelectionPolicy is a trait that defines how to select a child node from a parent node.
@@ -122,6 +111,7 @@ trait SelectionPolicy {
     type _Int: Int;
     type _State: State;
 
+    // TODO REMOVEME
     fn select_child(
         &self,
         tree: &MctsTree<Self::_Action, Self::_Int, Self::_State>,
@@ -190,13 +180,89 @@ where
     ) -> Option<MctsNodeKey> {
         let parent_visits = tree.get_node_from_nodekey(node).visits;
         let mut best_child = None;
-        let mut best_score = _Float::neg_infinity();
+        let mut best_score = _Float::min_value();
         for child in tree.get_children_nodekeys(node).values() {
             let child_node = tree.get_node_from_nodekey(*child);
             let score = self.uct_score(child_node.visits, child_node.wins, parent_visits);
             if score > best_score {
                 best_score = score;
                 best_child = Some(*child);
+            }
+        }
+        best_child
+    }
+}
+
+enum SimulationResult {
+    Win,
+    NotWin,
+}
+
+type Select<_Action, _Int, _State> = fn(&MctsTree<_Action, _Int, _State>) -> MctsNodeKey;
+type Expand<_Action, _Int, _State> =
+    fn(&mut MctsTree<_Action, _Int, _State>, MctsNodeKey) -> MctsNodeKey;
+type Simulate<_Action, _Int, _State> =
+    fn(&MctsTree<_Action, _Int, _State>, MctsNodeKey) -> SimulationResult;
+type BackPropagate<_Action, _Int, _State> =
+    fn(&mut MctsTree<_Action, _Int, _State>, MctsNodeKey, SimulationResult);
+
+// Mcts is the main Monte Carlo Tree Search algorithm.
+// See section 5.4 Monte Carlo Tree Search page 162 and 163.
+struct Mcts<_Action, _Int, _State>
+where
+    _Action: Action,
+    _Int: Int,
+    _State: State,
+{
+    tree: MctsTree<_Action, _Int, _State>,
+    selection_policy: Box<dyn SelectionPolicy<_Action = _Action, _Int = _Int, _State = _State>>,
+    select: Select<_Action, _Int, _State>,
+    expand: Expand<_Action, _Int, _State>,
+    simulate: Simulate<_Action, _Int, _State>,
+    back_propagate: BackPropagate<_Action, _Int, _State>,
+}
+
+impl<_Action, _Int, _State> Mcts<_Action, _Int, _State>
+where
+    _Action: Action,
+    _Int: Int,
+    _State: State,
+{
+    fn new(
+        selection_policy: Box<dyn SelectionPolicy<_Action = _Action, _Int = _Int, _State = _State>>,
+        select: Select<_Action, _Int, _State>,
+        expand: Expand<_Action, _Int, _State>,
+        simulate: Simulate<_Action, _Int, _State>,
+        back_propagate: BackPropagate<_Action, _Int, _State>,
+    ) -> Self {
+        Self {
+            tree: MctsTree::new(),
+            selection_policy,
+            select,
+            expand,
+            simulate,
+            back_propagate,
+        }
+    }
+
+    fn run(&mut self, iterations: _Int) {
+        for _ in 0..iterations {
+            let node = (self.select)(&self.tree);
+            let node = (self.expand)(&mut self.tree, node);
+            let result = (self.simulate)(&self.tree, node);
+            (self.back_propagate)(&mut self.tree, node, result);
+        }
+    }
+
+    fn get_best_action(&self) -> Option<_Action> {
+        let root_node = self.tree.get_root_node();
+        let mut best_child = None;
+        let mut best_score = _Int::min_value();
+        for child in self.tree.get_children_nodekeys(root_node.key).values() {
+            let child_node = self.tree.get_node_from_nodekey(*child);
+            if child_node.visits > best_score {
+                best_score = child_node.visits;
+                best_child = Some(child_node.action);
             }
         }
         best_child
@@ -216,27 +282,83 @@ mod tests {
     // used with MCTS.
     impl State for DummyState {}
 
-    // Test a small pre-built tree from chapter 5 page 162, just first level.
+    // Test a small pre-built tree from chapter 5 page 162
     // - Root node has 100 visits, 37 wins.
-    // - Root node has 3 children.
-    //   - First child has 79 visits, 19 wins
-    //   - Second child has 10 visits, 9 wins.
-    //   - Third child has 11 visits, 9 wins.
+    //   - First child has 79 visits, 60 wins
+    //     - First grandchild has 26 visits, 3 wins.
+    //     - Second grandchild has 53 visits, 16 wins.
+    //       - First great grandchild has 35 visits, 27 wins.
+    //       - Second great grandchild has 18 visits, 10 wins.
+    //   - Second child has 10 visits, 1 win.
+    //     - First grandchild has 6 visits, 6 wins.
+    //       - First great grandchild has 3 visits, 0 wins.
+    //       - Second great grandchild has 3 visits, 0 wins.
+    //     - Second grandchild has 4 visits, 3 wins.
+    //   - Third child has 11 visits, 2 wins.
     fn build_test_tree() -> MctsTree<u32, u32, DummyState> {
         let mut tree = MctsTree::<u32, u32, DummyState>::new(DummyState {});
         let root_node = tree.get_mut_root();
         root_node.wins = 37;
         root_node.visits = 100;
 
-        let first_child = tree.add_mut_child(DummyState {}, tree.root, 1);
+        let first_child_nodekey = tree.add_child(DummyState {}, tree.root, 1);
+        let first_child = tree.get_mut_node_from_nodekey(first_child_nodekey);
         first_child.wins = 60;
         first_child.visits = 79;
 
-        let second_child = tree.add_mut_child(DummyState {}, tree.root, 2);
+        let first_grandchild_nodekey = tree.add_child(DummyState {}, first_child_nodekey, 1);
+        let first_grandchild = tree.get_mut_node_from_nodekey(first_grandchild_nodekey);
+        first_grandchild.wins = 3;
+        first_grandchild.visits = 26;
+
+        let second_grandchild_nodekey = tree.add_child(DummyState {}, first_child_nodekey, 2);
+        let second_grandchild = tree.get_mut_node_from_nodekey(second_grandchild_nodekey);
+        second_grandchild.wins = 16;
+        second_grandchild.visits = 53;
+
+        let first_great_grandchild_nodekey =
+            tree.add_child(DummyState {}, second_grandchild_nodekey, 1);
+        let first_great_grandchild = tree.get_mut_node_from_nodekey(first_great_grandchild_nodekey);
+        first_great_grandchild.wins = 27;
+        first_great_grandchild.visits = 35;
+
+        let second_great_grandchild_nodekey =
+            tree.add_child(DummyState {}, second_grandchild_nodekey, 2);
+        let second_great_grandchild =
+            tree.get_mut_node_from_nodekey(second_great_grandchild_nodekey);
+        second_great_grandchild.wins = 10;
+        second_great_grandchild.visits = 18;
+
+        let second_child_nodekey = tree.add_child(DummyState {}, tree.root, 2);
+        let second_child = tree.get_mut_node_from_nodekey(second_child_nodekey);
         second_child.wins = 1;
         second_child.visits = 10;
 
-        let third_child = tree.add_mut_child(DummyState {}, tree.root, 3);
+        let first_grandchild_nodekey = tree.add_child(DummyState {}, second_child_nodekey, 1);
+        let first_grandchild = tree.get_mut_node_from_nodekey(first_grandchild_nodekey);
+        first_grandchild.wins = 6;
+        first_grandchild.visits = 6;
+
+        let first_great_grandchild_nodekey =
+            tree.add_child(DummyState {}, first_grandchild_nodekey, 1);
+        let first_great_grandchild = tree.get_mut_node_from_nodekey(first_great_grandchild_nodekey);
+        first_great_grandchild.wins = 0;
+        first_great_grandchild.visits = 3;
+
+        let second_great_grandchild_nodekey =
+            tree.add_child(DummyState {}, first_grandchild_nodekey, 2);
+        let second_great_grandchild =
+            tree.get_mut_node_from_nodekey(second_great_grandchild_nodekey);
+        second_great_grandchild.wins = 0;
+        second_great_grandchild.visits = 3;
+
+        let second_grandchild_nodekey = tree.add_child(DummyState {}, second_child_nodekey, 2);
+        let second_grandchild = tree.get_mut_node_from_nodekey(second_grandchild_nodekey);
+        second_grandchild.wins = 3;
+        second_grandchild.visits = 4;
+
+        let third_child_nodekey = tree.add_child(DummyState {}, tree.root, 3);
+        let third_child = tree.get_mut_node_from_nodekey(third_child_nodekey);
         third_child.wins = 2;
         third_child.visits = 11;
 
