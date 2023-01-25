@@ -8,4 +8,5 @@ edition = "2021"
 [dependencies]
 approx = "0.5.1"
 num-traits = "0.2.15"
+rand = "0.8.5"
 slotmap = "1.0.6"
