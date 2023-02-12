@@ -1,86 +1,76 @@
-use num_traits::real::Real;
-use rand::seq::IteratorRandom;
-use slotmap::new_key_type;
+/*
+ * Copyright 2023 Asim Ihsan
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+use rand::prelude::SliceRandom;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::marker::PhantomData;
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+use slotmap::new_key_type;
+
 trait Action: Clone + Copy + PartialEq + Eq + Hash {}
-trait Float: Clone + Copy + Real {}
-trait Int:
-    Clone + Copy + num_traits::Num + num_traits::NumCast + num_traits::Bounded + Ord + PartialOrd
+
+trait State<_Action>: Clone + PartialEq + Eq + Hash
+where
+    _Action: Action,
 {
+    fn simulate(&self, playouts: Int) -> Vec<SimulationResult>;
+    fn get_actions(&self) -> Vec<_Action>;
+    fn get_next_state(&self, action: &_Action) -> Self;
 }
-trait State {}
 
-impl Action for u32 {}
-
-// Using a macro, impl Float for all primitive float types
-macro_rules! impl_float_for_all_float_types {
-    ($($t:ty)*) => ($(
-        impl Float for $t {}
-    )*)
-}
-impl_float_for_all_float_types! { f32 f64 }
-
-// Using a macro, impl Int for all primitive int types
-macro_rules! impl_int_for_all_int_types {
-    ($($t:ty)*) => ($(
-        impl Int for $t {}
-    )*)
-}
-impl_int_for_all_int_types! { u8 u16 u32 u64 usize i8 i16 i32 i64 }
+type Int = i32;
+type Float = f64;
 
 new_key_type! { struct MctsNodeKey; }
 
 #[derive(Debug, Clone)]
-struct MctsNode<_State, _Action, _Int>
-where
-    _State: State,
-    _Action: Action,
-    _Int: Int,
-{
+struct MctsNode<_State, _Action> {
     parent: Option<MctsNodeKey>,
     children: HashMap<_Action, MctsNodeKey>,
-    visits: _Int,
-    wins: _Int,
+    visits: Int,
+    wins: Int,
     state: Option<_State>,
 }
 
-impl<_State, _Action, _Int> MctsNode<_State, _Action, _Int>
-where
-    _State: State,
-    _Action: Action,
-    _Int: Int,
-{
+impl<_State, _Action> MctsNode<_State, _Action> {
     fn new(parent: Option<MctsNodeKey>, state: Option<_State>) -> Self {
         Self {
             parent,
             children: HashMap::new(),
-            visits: num_traits::zero(),
-            wins: num_traits::zero(),
+            visits: 0,
+            wins: 0,
             state,
         }
     }
 }
 
 #[derive(Debug, Clone)]
-struct MctsTree<_State, _Action, _Int>
-where
-    _State: State,
-    _Action: Action,
-    _Int: Int,
-{
-    nodes: slotmap::SlotMap<MctsNodeKey, MctsNode<_State, _Action, _Int>>,
+struct MctsTree<_State, _Action> {
+    nodes: slotmap::SlotMap<MctsNodeKey, MctsNode<_State, _Action>>,
     root: MctsNodeKey,
 }
 
-impl<_State, _Action, _Int> MctsTree<_State, _Action, _Int>
+impl<_State, _Action> MctsTree<_State, _Action>
 where
-    _State: State,
+    _State: State<_Action>,
     _Action: Action,
-    _Int: Int,
 {
     fn new(root_state: _State) -> Self {
         let mut nodes = slotmap::SlotMap::with_key();
@@ -88,22 +78,19 @@ where
         Self { nodes, root }
     }
 
-    fn get_node_from_nodekey(&self, node: MctsNodeKey) -> &MctsNode<_State, _Action, _Int> {
+    fn get_node_from_nodekey(&self, node: MctsNodeKey) -> &MctsNode<_State, _Action> {
         &self.nodes[node]
     }
 
-    fn get_mut_node_from_nodekey(
-        &mut self,
-        node: MctsNodeKey,
-    ) -> &mut MctsNode<_State, _Action, _Int> {
+    fn get_mut_node_from_nodekey(&mut self, node: MctsNodeKey) -> &mut MctsNode<_State, _Action> {
         &mut self.nodes[node]
     }
 
-    fn get_root(&self) -> &MctsNode<_State, _Action, _Int> {
+    fn get_root(&self) -> &MctsNode<_State, _Action> {
         &self.nodes[self.root]
     }
 
-    fn get_mut_root(&mut self) -> &mut MctsNode<_State, _Action, _Int> {
+    fn get_mut_root(&mut self) -> &mut MctsNode<_State, _Action> {
         &mut self.nodes[self.root]
     }
 
@@ -127,216 +114,60 @@ where
     }
 }
 
-fn uct_score<_Int, _Float>(
-    node_visits: _Int,
-    node_wins: _Int,
-    parent_visits: _Int,
-    exploration_constant: _Float,
-) -> _Float
-where
-    _Int: Int,
-    _Float: Float,
-{
-    let node_wins_float = num_traits::cast::<_, _Float>(node_wins).unwrap();
-    let node_visits_float = num_traits::cast::<_, _Float>(node_visits).unwrap();
-    let parent_visits_float = num_traits::cast::<_, _Float>(parent_visits).unwrap();
+fn uct_score(
+    node_visits: Int,
+    node_wins: Int,
+    parent_visits: Int,
+    exploration_constant: Float,
+) -> Float {
+    let node_wins_float = Float::from(node_wins);
+    let node_visits_float = Float::from(node_visits);
+    let parent_visits_float = Float::from(parent_visits);
     let exploitation_term = node_wins_float / node_visits_float;
     let exploration_term =
         exploration_constant * (parent_visits_float.ln() / node_visits_float).sqrt();
     exploitation_term + exploration_term
 }
 
+fn uct_select<_State, _Action>(
+    tree: &MctsTree<_State, _Action>,
+    exploration_constant: Float,
+) -> MctsNodeKey
+where
+    _State: State<_Action>,
+    _Action: Action,
+{
+    let root = tree.get_root_nodekey();
+    let mut node = root;
+    loop {
+        let children = tree.get_children_nodekeys(node);
+        if children.is_empty() {
+            break;
+        }
+        let parent_visits = tree.get_node_from_nodekey(node).visits;
+        let (action, _best_child, _score) = children
+            .iter()
+            .map(|(action, child)| {
+                let child_node = tree.get_node_from_nodekey(*child);
+                let score = uct_score(
+                    child_node.visits,
+                    child_node.wins,
+                    parent_visits,
+                    exploration_constant,
+                );
+                (action, child, score)
+            })
+            .max_by(|(_, _, score1), (_, _, score2)| score1.partial_cmp(score2).unwrap())
+            .unwrap();
+        node = *children.get(action).unwrap();
+    }
+    node
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SimulationResult {
     Win,
     NotWin,
-}
-
-trait StateActionApplier<_State, _Action>
-where
-    _State: State,
-    _Action: Action,
-{
-    fn apply_action(&self, state: &_State, action: &_Action) -> _State;
-}
-
-trait Select<_State, _Action, _Int>
-where
-    _State: State,
-    _Action: Action,
-    _Int: Int,
-{
-    fn select(&self, tree: &MctsTree<_State, _Action, _Int>) -> MctsNodeKey;
-}
-
-trait Expand<_State, _Action, _Int>
-where
-    _State: State,
-    _Action: Action,
-    _Int: Int,
-{
-    fn expand(&self, tree: &mut MctsTree<_State, _Action, _Int>, node: MctsNodeKey) -> MctsNodeKey;
-}
-
-trait Simulate<_State>
-where
-    _State: State,
-{
-    fn simulate(&self, state: &_State) -> SimulationResult;
-}
-
-trait BackPropagate<_State, _Action, _Int>
-where
-    _State: State,
-    _Action: Action,
-    _Int: Int,
-{
-    fn back_propagate(
-        &self,
-        tree: &mut MctsTree<_State, _Action, _Int>,
-        node: MctsNodeKey,
-        result: SimulationResult,
-    );
-}
-
-struct UctSelect<_State, _Action, _Int, _Float>
-where
-    _State: State,
-    _Action: Action,
-    _Int: Int,
-    _Float: Float,
-{
-    exploration_constant: _Float,
-    phantom_state: PhantomData<_State>,
-    phantom_action: PhantomData<_Action>,
-    phantom_int: PhantomData<_Int>,
-}
-
-impl<_State, _Action, _Int, _Float> Default for UctSelect<_State, _Action, _Int, _Float>
-where
-    _State: State,
-    _Action: Action,
-    _Int: Int,
-    _Float: Float,
-{
-    fn default() -> Self {
-        UctSelect::new(_Float::from(1.4).unwrap())
-    }
-}
-
-impl<_State, _Action, _Int, _Float> UctSelect<_State, _Action, _Int, _Float>
-where
-    _State: State,
-    _Action: Action,
-    _Int: Int,
-    _Float: Float,
-{
-    fn new(exploration_constant: _Float) -> Self {
-        Self {
-            exploration_constant,
-            phantom_state: PhantomData,
-            phantom_action: PhantomData,
-            phantom_int: PhantomData,
-        }
-    }
-}
-
-impl<_State, _Action, _Int, _Float> Select<_State, _Action, _Int>
-    for UctSelect<_State, _Action, _Int, _Float>
-where
-    _State: State,
-    _Action: Action,
-    _Int: Int,
-    _Float: Float,
-{
-    fn select(&self, tree: &MctsTree<_State, _Action, _Int>) -> MctsNodeKey {
-        let root = tree.get_root_nodekey();
-        let mut node = root;
-        loop {
-            let children = tree.get_children_nodekeys(node);
-            if children.is_empty() {
-                break;
-            }
-            let parent_visits = tree.get_node_from_nodekey(node).visits;
-            let (action, _best_child, _score) = children
-                .iter()
-                .map(|(action, child)| {
-                    let child_node = tree.get_node_from_nodekey(*child);
-                    let score = uct_score(
-                        child_node.visits,
-                        child_node.wins,
-                        parent_visits,
-                        self.exploration_constant,
-                    );
-                    (action, child, score)
-                })
-                .max_by(|(_, _, score1), (_, _, score2)| score1.partial_cmp(score2).unwrap())
-                .unwrap();
-            node = *children.get(action).unwrap();
-        }
-        node
-    }
-}
-
-struct ExpandAllSelectRandom<_State, _Action, _Int>
-where
-    _State: State,
-    _Action: Action,
-    _Int: Int,
-{
-    phantom_state: PhantomData<_State>,
-    phantom_action: PhantomData<_Action>,
-    phantom_int: PhantomData<_Int>,
-}
-
-impl<_State, _Action, _Int> Default for ExpandAllSelectRandom<_State, _Action, _Int>
-where
-    _State: State,
-    _Action: Action,
-    _Int: Int,
-{
-    fn default() -> Self {
-        ExpandAllSelectRandom::new()
-    }
-}
-
-impl<_State, _Action, _Int> ExpandAllSelectRandom<_State, _Action, _Int>
-where
-    _State: State,
-    _Action: Action,
-    _Int: Int,
-{
-    fn new() -> Self {
-        Self {
-            phantom_state: PhantomData,
-            phantom_action: PhantomData,
-            phantom_int: PhantomData,
-        }
-    }
-}
-
-impl<_State, _Action, _Int> Expand<_State, _Action, _Int>
-    for ExpandAllSelectRandom<_State, _Action, _Int>
-where
-    _State: State,
-    _Action: Action,
-    _Int: Int,
-{
-    fn expand(&self, tree: &mut MctsTree<_State, _Action, _Int>, node: MctsNodeKey) -> MctsNodeKey {
-        let mut node = node;
-        loop {
-            let children = tree.get_children_nodekeys(node);
-            if children.is_empty() {
-                break;
-            }
-            let mut rng = rand::thread_rng();
-            let (action, _random_child) = children
-                .iter()
-                .choose(&mut rng)
-                .expect("ExpandAllSelectRandom: children is empty");
-            node = *children.get(action).unwrap();
-        }
-        node
-    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -347,55 +178,29 @@ pub enum IterationLimitKind {
 
 // Mcts is the main Monte Carlo Tree Search algorithm.
 // See section 5.4 Monte Carlo Tree Search page 162 and 163.
-struct Mcts<_State, _Action, _Int, _Select, _Expand, _Simulate, _BackPropagate, _StateActionApplier>
-where
-    _State: State,
-    _Action: Action,
-    _Int: Int,
-    _Select: Select<_State, _Action, _Int>,
-    _Expand: Expand<_State, _Action, _Int>,
-    _Simulate: Simulate<_State>,
-    _BackPropagate: BackPropagate<_State, _Action, _Int>,
-    _StateActionApplier: StateActionApplier<_State, _Action>,
-{
-    select: _Select,
-    expand: _Expand,
-    simulate: _Simulate,
-    back_propagate: _BackPropagate,
-    state_action_applier: _StateActionApplier,
-    tree: MctsTree<_State, _Action, _Int>,
+struct Mcts<_State, _Action> {
+    tree: Rc<RefCell<MctsTree<_State, _Action>>>,
     iteration_limit: IterationLimitKind,
+    exploration_constant: Float,
+    playouts_per_simulation: Int,
 }
 
-impl<_State, _Action, _Int, _Select, _Expand, _Simulate, _BackPropagate, _StateActionApplier>
-    Mcts<_State, _Action, _Int, _Select, _Expand, _Simulate, _BackPropagate, _StateActionApplier>
+impl<_State, _Action> Mcts<_State, _Action>
 where
-    _State: State,
+    _State: State<_Action>,
     _Action: Action,
-    _Int: Int,
-    _Select: Select<_State, _Action, _Int>,
-    _Expand: Expand<_State, _Action, _Int>,
-    _Simulate: Simulate<_State>,
-    _BackPropagate: BackPropagate<_State, _Action, _Int>,
-    _StateActionApplier: StateActionApplier<_State, _Action>,
 {
     fn new(
-        select: _Select,
-        expand: _Expand,
-        simulate: _Simulate,
-        back_propagate: _BackPropagate,
-        state_action_applier: _StateActionApplier,
         root_state: _State,
         iteration_limit: IterationLimitKind,
+        exploration_constant: Float,
+        playouts_per_simulation: Int,
     ) -> Self {
         Self {
-            select,
-            expand,
-            simulate,
-            back_propagate,
-            state_action_applier,
-            tree: MctsTree::new(root_state),
+            tree: Rc::new(RefCell::new(MctsTree::new(root_state))),
             iteration_limit,
+            exploration_constant,
+            playouts_per_simulation,
         }
     }
 
@@ -416,20 +221,75 @@ where
     }
 
     fn iteration(&mut self) {
-        let node_key = self.select.select(&self.tree);
-        let node_key = self.expand.expand(&mut self.tree, node_key);
-        let node = self.tree.get_node_from_nodekey(node_key);
-        let result = self.simulate.simulate(node.state.as_ref().unwrap());
-        self.back_propagate
-            .back_propagate(&mut self.tree, node_key, result);
+        let node_key = self.select();
+        let node_key = self.expand(node_key);
+        let tree = Rc::clone(&self.tree);
+        let tree = tree.borrow();
+        let node = tree.get_node_from_nodekey(node_key);
+        let result = node
+            .state
+            .as_ref()
+            .unwrap()
+            .simulate(self.playouts_per_simulation);
+        self.back_propagate(node_key, result);
+    }
+
+    fn select(&self) -> MctsNodeKey {
+        let tree = Rc::clone(&self.tree);
+        let tree = tree.borrow();
+        uct_select(&tree, self.exploration_constant)
+    }
+
+    fn expand(&mut self, node_key: MctsNodeKey) -> MctsNodeKey {
+        let tree = Rc::clone(&self.tree);
+        let mut tree = tree.borrow_mut();
+        let node = tree.get_node_from_nodekey(node_key);
+        if !node.children.is_empty() {
+            panic!("unexpected expansion for node with children!");
+        }
+        let state = node.state.as_ref().unwrap();
+        let actions = state.get_actions();
+
+        // For each action, create a child with no state. We only create state during a simulation
+        // that ends up choosing this child.
+        for action in &actions {
+            self.tree.borrow_mut().add_child(None, node_key, *action);
+        }
+
+        // Choose a random child, populate its state.
+        let random_action = &actions.choose(&mut rand::thread_rng()).unwrap();
+        let random_child = tree
+            .get_children_nodekeys(node_key)
+            .get(random_action)
+            .unwrap();
+        let new_state = state.get_next_state(random_action);
+
+        let tree = Rc::clone(&self.tree);
+        let mut tree = tree.borrow_mut();
+        tree.get_mut_node_from_nodekey(*random_child).state = Some(new_state);
+
+        *random_child
+    }
+
+    fn back_propagate(&mut self, node_key: MctsNodeKey, results: Vec<SimulationResult>) {
+        let mut node_key = node_key;
+        for result in results {
+            let node = self.tree.borrow().get_mut_node_from_nodekey(node_key);
+            node.visits += 1;
+            if result == SimulationResult::Win {
+                node.wins += 1;
+            }
+            node_key = node.parent.unwrap();
+        }
     }
 
     fn get_best_action(&self) -> Option<_Action> {
-        let root_nodekey = self.tree.get_root_nodekey();
+        let tree = self.tree.borrow();
+        let root_nodekey = tree.get_root_nodekey();
         let mut best_action = None;
-        let mut best_score = _Int::min_value();
-        for (action, child) in self.tree.get_children_nodekeys(root_nodekey) {
-            let child_node = self.tree.get_node_from_nodekey(*child);
+        let mut best_score = Int::MIN;
+        for (action, child) in tree.get_children_nodekeys(root_nodekey) {
+            let child_node = tree.get_node_from_nodekey(*child);
             if child_node.visits > best_score {
                 best_score = child_node.visits;
                 best_action = Some(*action);
@@ -441,16 +301,47 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::f64::consts::SQRT_2;
+
     use approx::assert_abs_diff_eq;
+
+    use super::*;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    enum MyAction {
+        Up,
+        Down,
+        Left,
+        Right,
+    }
+
+    impl Action for MyAction {}
 
     // Some dummy state that is associated with MCTS nodes. You would put e.g. "whose turn is it",
     // "what is the board", etc. here. You need to state to know what applying the action does.
-    struct DummyState {}
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    struct MyState {
+        pub data: u32,
+    }
 
     // The State trait is a flag that says that DummyState implements the State trait and can be
     // used with MCTS.
-    impl State for DummyState {}
+    impl State<MyAction> for MyState {
+        fn simulate(&self, playouts: Int) -> Vec<SimulationResult> {
+            todo!()
+        }
+
+        fn get_actions(&self) -> Vec<MyAction> {
+            todo!()
+        }
+
+        fn get_next_state(&self, action: &MyAction) -> Self {
+            if *action == MyAction::Down {}
+            todo!()
+        }
+    }
+
+    type MyMcts = Mcts<MyState, MyAction>;
 
     // Test a small pre-built tree from chapter 5 page 162
     // - Root node has 100 visits, 37 wins.
@@ -465,81 +356,152 @@ mod tests {
     //       - Second great grandchild has 3 visits, 0 wins.
     //     - Second grandchild has 4 visits, 3 wins.
     //   - Third child has 11 visits, 2 wins.
-    fn build_test_tree() -> MctsTree<DummyState, u32, u32> {
-        let mut tree = MctsTree::<DummyState, u32, u32>::new(DummyState {});
-        let root_node = tree.get_mut_root();
+    fn build_test_tree() -> MyMcts {
+        let mut mcts = MyMcts::new(
+            MyState { data: 0 },                 /* root state */
+            IterationLimitKind::Iterations(100), /* iteration_limit */
+            SQRT_2,                              /* exploration_constant */
+            1,                                   /* playouts_per_simulation */
+        );
+        let mut tree = mcts.tree;
+        let root_node = tree.borrow_mut().get_mut_root();
         root_node.wins = 37;
         root_node.visits = 100;
 
-        let first_child_nodekey = tree.add_child(Some(DummyState {}), tree.root, 1);
-        let first_child = tree.get_mut_node_from_nodekey(first_child_nodekey);
+        let first_child_nodekey = tree.borrow_mut().add_child(
+            Some(MyState { data: 0 }),
+            tree.borrow().get_root_nodekey(),
+            MyAction::Up,
+        );
+        let first_child = tree
+            .borrow_mut()
+            .get_mut_node_from_nodekey(first_child_nodekey);
         first_child.wins = 60;
         first_child.visits = 79;
 
-        let first_grandchild_nodekey = tree.add_child(Some(DummyState {}), first_child_nodekey, 1);
-        let first_grandchild = tree.get_mut_node_from_nodekey(first_grandchild_nodekey);
+        let first_grandchild_nodekey = tree.borrow_mut().add_child(
+            Some(MyState { data: 0 }),
+            first_child_nodekey,
+            MyAction::Up,
+        );
+        let first_grandchild = tree
+            .borrow_mut()
+            .get_mut_node_from_nodekey(first_grandchild_nodekey);
         first_grandchild.wins = 3;
         first_grandchild.visits = 26;
 
-        let second_grandchild_nodekey = tree.add_child(Some(DummyState {}), first_child_nodekey, 2);
-        let second_grandchild = tree.get_mut_node_from_nodekey(second_grandchild_nodekey);
+        let second_grandchild_nodekey = tree.borrow_mut().add_child(
+            Some(MyState { data: 0 }),
+            first_child_nodekey,
+            MyAction::Right,
+        );
+        let second_grandchild = tree
+            .borrow_mut()
+            .get_mut_node_from_nodekey(second_grandchild_nodekey);
         second_grandchild.wins = 16;
         second_grandchild.visits = 53;
 
-        let first_great_grandchild_nodekey =
-            tree.add_child(Some(DummyState {}), second_grandchild_nodekey, 1);
-        let first_great_grandchild = tree.get_mut_node_from_nodekey(first_great_grandchild_nodekey);
+        let first_great_grandchild_nodekey = tree.borrow_mut().add_child(
+            Some(MyState { data: 0 }),
+            second_grandchild_nodekey,
+            MyAction::Up,
+        );
+        let first_great_grandchild = tree
+            .borrow_mut()
+            .get_mut_node_from_nodekey(first_great_grandchild_nodekey);
         first_great_grandchild.wins = 27;
         first_great_grandchild.visits = 35;
 
-        let second_great_grandchild_nodekey =
-            tree.add_child(Some(DummyState {}), second_grandchild_nodekey, 2);
-        let second_great_grandchild =
-            tree.get_mut_node_from_nodekey(second_great_grandchild_nodekey);
+        let second_great_grandchild_nodekey = tree.borrow_mut().add_child(
+            Some(MyState { data: 0 }),
+            second_grandchild_nodekey,
+            MyAction::Right,
+        );
+        let second_great_grandchild = tree
+            .borrow_mut()
+            .get_mut_node_from_nodekey(second_great_grandchild_nodekey);
         second_great_grandchild.wins = 10;
         second_great_grandchild.visits = 18;
 
-        let second_child_nodekey = tree.add_child(Some(DummyState {}), tree.root, 2);
-        let second_child = tree.get_mut_node_from_nodekey(second_child_nodekey);
+        let second_child_nodekey = tree.borrow_mut().add_child(
+            Some(MyState { data: 0 }),
+            tree.borrow().get_root_nodekey(),
+            MyAction::Right,
+        );
+        let second_child = tree
+            .borrow_mut()
+            .get_mut_node_from_nodekey(second_child_nodekey);
         second_child.wins = 1;
         second_child.visits = 10;
 
-        let first_grandchild_nodekey = tree.add_child(Some(DummyState {}), second_child_nodekey, 1);
-        let first_grandchild = tree.get_mut_node_from_nodekey(first_grandchild_nodekey);
+        let first_grandchild_nodekey = tree.borrow_mut().add_child(
+            Some(MyState { data: 0 }),
+            second_child_nodekey,
+            MyAction::Up,
+        );
+        let first_grandchild = tree
+            .borrow_mut()
+            .get_mut_node_from_nodekey(first_grandchild_nodekey);
         first_grandchild.wins = 6;
         first_grandchild.visits = 6;
 
-        let first_great_grandchild_nodekey =
-            tree.add_child(Some(DummyState {}), first_grandchild_nodekey, 1);
-        let first_great_grandchild = tree.get_mut_node_from_nodekey(first_great_grandchild_nodekey);
+        let first_great_grandchild_nodekey = tree.borrow_mut().add_child(
+            Some(MyState { data: 0 }),
+            first_grandchild_nodekey,
+            MyAction::Right,
+        );
+        let first_great_grandchild = tree
+            .borrow_mut()
+            .get_mut_node_from_nodekey(first_great_grandchild_nodekey);
         first_great_grandchild.wins = 0;
         first_great_grandchild.visits = 3;
 
-        let second_great_grandchild_nodekey =
-            tree.add_child(Some(DummyState {}), first_grandchild_nodekey, 2);
-        let second_great_grandchild =
-            tree.get_mut_node_from_nodekey(second_great_grandchild_nodekey);
+        let second_great_grandchild_nodekey = tree.borrow_mut().add_child(
+            Some(MyState { data: 0 }),
+            first_grandchild_nodekey,
+            MyAction::Right,
+        );
+        let second_great_grandchild = tree
+            .borrow_mut()
+            .get_mut_node_from_nodekey(second_great_grandchild_nodekey);
         second_great_grandchild.wins = 0;
         second_great_grandchild.visits = 3;
 
-        let second_grandchild_nodekey =
-            tree.add_child(Some(DummyState {}), second_child_nodekey, 2);
-        let second_grandchild = tree.get_mut_node_from_nodekey(second_grandchild_nodekey);
+        let second_grandchild_nodekey = tree.borrow_mut().add_child(
+            Some(MyState { data: 0 }),
+            second_child_nodekey,
+            MyAction::Right,
+        );
+        let second_grandchild = tree
+            .borrow_mut()
+            .get_mut_node_from_nodekey(second_grandchild_nodekey);
         second_grandchild.wins = 3;
         second_grandchild.visits = 4;
 
-        let third_child_nodekey = tree.add_child(Some(DummyState {}), tree.root, 3);
-        let third_child = tree.get_mut_node_from_nodekey(third_child_nodekey);
+        let third_child_nodekey = tree.borrow_mut().add_child(
+            Some(MyState { data: 0 }),
+            tree.borrow().get_root_nodekey(),
+            MyAction::Down,
+        );
+        let third_child = tree
+            .borrow_mut()
+            .get_mut_node_from_nodekey(third_child_nodekey);
         third_child.wins = 2;
         third_child.visits = 11;
 
-        tree
+        mcts
     }
 
     #[test]
     fn test_mcts_tree_root_starts_off_as_zero() {
-        let tree = MctsTree::<DummyState, u32, u32>::new(DummyState {});
-        let root_node = tree.get_root();
+        let mut mcts = MyMcts::new(
+            MyState { data: 0 },                 /* root state */
+            IterationLimitKind::Iterations(100), /* iteration_limit */
+            SQRT_2,                              /* exploration_constant */
+            1,                                   /* playouts_per_simulation */
+        );
+        let tree = mcts.tree;
+        let root_node = tree.borrow_mut().get_root();
         assert_eq!(root_node.visits, 0);
         assert_eq!(root_node.wins, 0);
         assert!(root_node.children.is_empty());
