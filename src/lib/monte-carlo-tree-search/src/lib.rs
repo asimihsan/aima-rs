@@ -237,15 +237,21 @@ where
 
     fn iteration(&mut self) {
         let node_key = self.select();
+
         let node_key = self.expand(node_key);
-        let tree = Rc::clone(&self.tree);
-        let tree = tree.borrow();
-        let node = tree.get_node_from_nodekey(node_key);
-        let result = node
-            .state
-            .as_ref()
-            .unwrap()
-            .simulate(self.playouts_per_simulation);
+
+        let result = {
+            let tree = Rc::clone(&self.tree);
+            let tree = tree.borrow();
+            let node = tree.get_node_from_nodekey(node_key);
+            let result = node
+                .state
+                .as_ref()
+                .unwrap()
+                .simulate(self.playouts_per_simulation);
+            result
+        };
+
         self.back_propagate(node_key, result);
     }
 
@@ -256,34 +262,45 @@ where
     }
 
     fn expand(&mut self, node_key: MctsNodeKey) -> MctsNodeKey {
-        let tree = Rc::clone(&self.tree);
-        let mut tree = tree.borrow_mut();
-        let node = tree.get_node_from_nodekey(node_key);
-        if !node.children.is_empty() {
-            panic!("unexpected expansion for node with children!");
-        }
-        let state = node.state.as_ref().unwrap();
+        let state = {
+            let tree = Rc::clone(&self.tree);
+            let tree = tree.borrow();
+            let node = tree.get_node_from_nodekey(node_key);
+            if !node.children.is_empty() {
+                panic!("unexpected expansion for node with children!");
+            }
+            node.state.as_ref().unwrap().clone()
+        };
         let actions = state.get_actions();
 
         // For each action, create a child with no state. We only create state during a simulation
         // that ends up choosing this child.
-        for action in &actions {
-            self.tree.borrow_mut().add_child(None, node_key, *action);
+        {
+            let tree = Rc::clone(&self.tree);
+            let mut tree = tree.borrow_mut();
+            for action in &actions {
+                tree.add_child(None, node_key, *action);
+            }
         }
 
         // Choose a random child, populate its state.
-        let random_action = &actions.choose(&mut rand::thread_rng()).unwrap();
-        let random_child = tree
-            .get_children_nodekeys(node_key)
-            .get(random_action)
-            .unwrap();
-        let new_state = state.get_next_state(random_action);
+        let (random_child, new_state) = {
+            let tree = Rc::clone(&self.tree);
+            let tree = tree.borrow();
+            let random_action = &actions.choose(&mut rand::thread_rng()).unwrap();
+            let random_child = *tree
+                .get_children_nodekeys(node_key)
+                .get(random_action)
+                .unwrap();
+            let new_state = state.get_next_state(random_action);
+            (random_child, new_state)
+        };
 
         let tree = Rc::clone(&self.tree);
         let mut tree = tree.borrow_mut();
-        tree.get_mut_node_from_nodekey(*random_child).state = Some(new_state);
+        tree.get_mut_node_from_nodekey(random_child).state = Some(new_state);
 
-        *random_child
+        random_child
     }
 
     fn back_propagate(&mut self, node_key: MctsNodeKey, results: Vec<SimulationResult>) {
@@ -339,20 +356,39 @@ mod tests {
         pub data: u32,
     }
 
-    // The State trait is a flag that says that DummyState implements the State trait and can be
-    // used with MCTS.
+    // In our test state, moving up twice are the best actions.
     impl State<MyAction> for MyState {
+        // If data is larger than 200 then the simulation is a win, else it is a loss.
         fn simulate(&self, playouts: Int) -> Vec<SimulationResult> {
-            todo!()
+            let mut results = Vec::new();
+            for _ in 0..playouts {
+                if self.data > 200 {
+                    results.push(SimulationResult::Win);
+                } else {
+                    results.push(SimulationResult::NotWin);
+                }
+            }
+            results
         }
 
+        // Regardless of the current state, say that all actions are valid.
         fn get_actions(&self) -> Vec<MyAction> {
-            todo!()
+            vec![
+                MyAction::Up,
+                MyAction::Down,
+                MyAction::Left,
+                MyAction::Right,
+            ]
         }
 
+        // If you move up then increment data by 100, else increment by 1.
         fn get_next_state(&self, action: &MyAction) -> Self {
-            if *action == MyAction::Down {}
-            todo!()
+            let mut new_state = self.clone();
+            match action {
+                MyAction::Up => new_state.data += 100,
+                _ => new_state.data += 1,
+            }
+            new_state
         }
     }
 
@@ -531,10 +567,9 @@ mod tests {
         assert_eq!(selected_child.wins, 27);
     }
 
+    // Test a small pre-built tree from chapter 5 page 162, just first level.
     //
-    // // Test a small pre-built tree from chapter 5 page 162, just first level.
-    // //
-    // // As per p163, if C = 1.5, then the third child is selected.
+    // As per p163, if C = 1.5, then the third child is selected.
     #[test]
     fn test_mcts_tree_small_tree_c_15_third_child_selected() {
         let tree = build_test_tree();
@@ -542,5 +577,18 @@ mod tests {
         let selected_child = tree.get_node_from_nodekey(selected_child_node_key);
         assert_eq!(selected_child.visits, 11);
         assert_eq!(selected_child.wins, 2);
+    }
+
+    #[test]
+    fn test_mcts_iterations() {
+        let mut mcts = MyMcts::new(
+            MyState { data: 0 },
+            IterationLimitKind::Iterations(20),
+            std::f64::consts::SQRT_2,
+            1, /* playouts_per_simulation */
+        );
+        mcts.run();
+
+        let _x = 1 + 2;
     }
 }
