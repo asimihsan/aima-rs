@@ -196,8 +196,23 @@ where
         exploration_constant: Float,
         playouts_per_simulation: Int,
     ) -> Self {
+        Mcts::new_from_tree(
+            MctsTree::new(root_state),
+            iteration_limit,
+            exploration_constant,
+            playouts_per_simulation,
+        )
+    }
+
+    // useful for tests
+    fn new_from_tree(
+        tree: MctsTree<_State, _Action>,
+        iteration_limit: IterationLimitKind,
+        exploration_constant: Float,
+        playouts_per_simulation: Int,
+    ) -> Self {
         Self {
-            tree: Rc::new(RefCell::new(MctsTree::new(root_state))),
+            tree: Rc::new(RefCell::new(tree)),
             iteration_limit,
             exploration_constant,
             playouts_per_simulation,
@@ -273,8 +288,10 @@ where
 
     fn back_propagate(&mut self, node_key: MctsNodeKey, results: Vec<SimulationResult>) {
         let mut node_key = node_key;
+        let tree = Rc::clone(&self.tree);
+        let mut tree = tree.borrow_mut();
         for result in results {
-            let node = self.tree.borrow().get_mut_node_from_nodekey(node_key);
+            let node = tree.get_mut_node_from_nodekey(node_key);
             node.visits += 1;
             if result == SimulationResult::Win {
                 node.wins += 1;
@@ -301,8 +318,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::f64::consts::SQRT_2;
-
     use approx::assert_abs_diff_eq;
 
     use super::*;
@@ -342,6 +357,16 @@ mod tests {
     }
 
     type MyMcts = Mcts<MyState, MyAction>;
+    type MyMctsTree = MctsTree<MyState, MyAction>;
+
+    fn new_my_mcts() -> MyMcts {
+        Mcts::new(
+            MyState { data: 0 },
+            IterationLimitKind::Iterations(1000),
+            1.0,
+            100,
+        )
+    }
 
     // Test a small pre-built tree from chapter 5 page 162
     // - Root node has 100 visits, 37 wins.
@@ -356,152 +381,119 @@ mod tests {
     //       - Second great grandchild has 3 visits, 0 wins.
     //     - Second grandchild has 4 visits, 3 wins.
     //   - Third child has 11 visits, 2 wins.
-    fn build_test_tree() -> MyMcts {
-        let mut mcts = MyMcts::new(
-            MyState { data: 0 },                 /* root state */
-            IterationLimitKind::Iterations(100), /* iteration_limit */
-            SQRT_2,                              /* exploration_constant */
-            1,                                   /* playouts_per_simulation */
-        );
-        let mut tree = mcts.tree;
-        let root_node = tree.borrow_mut().get_mut_root();
+    fn build_test_tree() -> MyMctsTree {
+        let root_state = MyState { data: 0 };
+        let mut tree = MyMctsTree::new(root_state);
+        let root_node = tree.get_mut_root();
         root_node.wins = 37;
         root_node.visits = 100;
 
-        let first_child_nodekey = tree.borrow_mut().add_child(
+        let first_child_nodekey = tree.add_child(
             Some(MyState { data: 0 }),
-            tree.borrow().get_root_nodekey(),
+            tree.get_root_nodekey(),
             MyAction::Up,
         );
-        let first_child = tree
-            .borrow_mut()
-            .get_mut_node_from_nodekey(first_child_nodekey);
+        let first_child = tree.get_mut_node_from_nodekey(first_child_nodekey);
         first_child.wins = 60;
         first_child.visits = 79;
 
-        let first_grandchild_nodekey = tree.borrow_mut().add_child(
-            Some(MyState { data: 0 }),
-            first_child_nodekey,
-            MyAction::Up,
-        );
-        let first_grandchild = tree
-            .borrow_mut()
-            .get_mut_node_from_nodekey(first_grandchild_nodekey);
+        let first_grandchild_nodekey =
+            tree.add_child(Some(MyState { data: 0 }), first_child_nodekey, MyAction::Up);
+        let first_grandchild = tree.get_mut_node_from_nodekey(first_grandchild_nodekey);
         first_grandchild.wins = 3;
         first_grandchild.visits = 26;
 
-        let second_grandchild_nodekey = tree.borrow_mut().add_child(
+        let second_grandchild_nodekey = tree.add_child(
             Some(MyState { data: 0 }),
             first_child_nodekey,
             MyAction::Right,
         );
-        let second_grandchild = tree
-            .borrow_mut()
-            .get_mut_node_from_nodekey(second_grandchild_nodekey);
+        let second_grandchild = tree.get_mut_node_from_nodekey(second_grandchild_nodekey);
         second_grandchild.wins = 16;
         second_grandchild.visits = 53;
 
-        let first_great_grandchild_nodekey = tree.borrow_mut().add_child(
+        let first_great_grandchild_nodekey = tree.add_child(
             Some(MyState { data: 0 }),
             second_grandchild_nodekey,
             MyAction::Up,
         );
-        let first_great_grandchild = tree
-            .borrow_mut()
-            .get_mut_node_from_nodekey(first_great_grandchild_nodekey);
+        let first_great_grandchild = tree.get_mut_node_from_nodekey(first_great_grandchild_nodekey);
         first_great_grandchild.wins = 27;
         first_great_grandchild.visits = 35;
 
-        let second_great_grandchild_nodekey = tree.borrow_mut().add_child(
+        let second_great_grandchild_nodekey = tree.add_child(
             Some(MyState { data: 0 }),
             second_grandchild_nodekey,
             MyAction::Right,
         );
-        let second_great_grandchild = tree
-            .borrow_mut()
-            .get_mut_node_from_nodekey(second_great_grandchild_nodekey);
+        let second_great_grandchild =
+            tree.get_mut_node_from_nodekey(second_great_grandchild_nodekey);
         second_great_grandchild.wins = 10;
         second_great_grandchild.visits = 18;
 
-        let second_child_nodekey = tree.borrow_mut().add_child(
+        let second_child_nodekey = tree.add_child(
             Some(MyState { data: 0 }),
-            tree.borrow().get_root_nodekey(),
+            tree.get_root_nodekey(),
             MyAction::Right,
         );
-        let second_child = tree
-            .borrow_mut()
-            .get_mut_node_from_nodekey(second_child_nodekey);
+        let second_child = tree.get_mut_node_from_nodekey(second_child_nodekey);
         second_child.wins = 1;
         second_child.visits = 10;
 
-        let first_grandchild_nodekey = tree.borrow_mut().add_child(
+        let first_grandchild_nodekey = tree.add_child(
             Some(MyState { data: 0 }),
             second_child_nodekey,
             MyAction::Up,
         );
-        let first_grandchild = tree
-            .borrow_mut()
-            .get_mut_node_from_nodekey(first_grandchild_nodekey);
+        let first_grandchild = tree.get_mut_node_from_nodekey(first_grandchild_nodekey);
         first_grandchild.wins = 6;
         first_grandchild.visits = 6;
 
-        let first_great_grandchild_nodekey = tree.borrow_mut().add_child(
+        let first_great_grandchild_nodekey = tree.add_child(
             Some(MyState { data: 0 }),
             first_grandchild_nodekey,
             MyAction::Right,
         );
-        let first_great_grandchild = tree
-            .borrow_mut()
-            .get_mut_node_from_nodekey(first_great_grandchild_nodekey);
+        let first_great_grandchild = tree.get_mut_node_from_nodekey(first_great_grandchild_nodekey);
         first_great_grandchild.wins = 0;
         first_great_grandchild.visits = 3;
 
-        let second_great_grandchild_nodekey = tree.borrow_mut().add_child(
+        let second_great_grandchild_nodekey = tree.add_child(
             Some(MyState { data: 0 }),
             first_grandchild_nodekey,
             MyAction::Right,
         );
-        let second_great_grandchild = tree
-            .borrow_mut()
-            .get_mut_node_from_nodekey(second_great_grandchild_nodekey);
+        let second_great_grandchild =
+            tree.get_mut_node_from_nodekey(second_great_grandchild_nodekey);
         second_great_grandchild.wins = 0;
         second_great_grandchild.visits = 3;
 
-        let second_grandchild_nodekey = tree.borrow_mut().add_child(
+        let second_grandchild_nodekey = tree.add_child(
             Some(MyState { data: 0 }),
             second_child_nodekey,
             MyAction::Right,
         );
-        let second_grandchild = tree
-            .borrow_mut()
-            .get_mut_node_from_nodekey(second_grandchild_nodekey);
+        let second_grandchild = tree.get_mut_node_from_nodekey(second_grandchild_nodekey);
         second_grandchild.wins = 3;
         second_grandchild.visits = 4;
 
-        let third_child_nodekey = tree.borrow_mut().add_child(
+        let third_child_nodekey = tree.add_child(
             Some(MyState { data: 0 }),
-            tree.borrow().get_root_nodekey(),
+            tree.get_root_nodekey(),
             MyAction::Down,
         );
-        let third_child = tree
-            .borrow_mut()
-            .get_mut_node_from_nodekey(third_child_nodekey);
+        let third_child = tree.get_mut_node_from_nodekey(third_child_nodekey);
         third_child.wins = 2;
         third_child.visits = 11;
 
-        mcts
+        tree
     }
 
     #[test]
     fn test_mcts_tree_root_starts_off_as_zero() {
-        let mut mcts = MyMcts::new(
-            MyState { data: 0 },                 /* root state */
-            IterationLimitKind::Iterations(100), /* iteration_limit */
-            SQRT_2,                              /* exploration_constant */
-            1,                                   /* playouts_per_simulation */
-        );
-        let tree = mcts.tree;
-        let root_node = tree.borrow_mut().get_root();
+        let root_state = MyState { data: 0 };
+        let tree = MyMctsTree::new(root_state);
+        let root_node = tree.get_root();
         assert_eq!(root_node.visits, 0);
         assert_eq!(root_node.wins, 0);
         assert!(root_node.children.is_empty());
@@ -527,41 +519,28 @@ mod tests {
 
     // Test a small pre-built tree from chapter 5 page 162.
     //
-    // As per p163, if C = 1.4, then the first child is selected.
-    // #[test]
-    // fn test_mcts_tree_small_tree_c_14_first_child_selected() {
-    //     let tree = build_test_tree();
-    //
-    //     type MctsImpl = Mcts<
-    //         u32 /*_State*/,
-    //         u32 /*_Action*/,
-    //         u32 /*_Int*/,
-    //         UctSelect<u32, u32, >
-    //
-    //     let mcts = Mcts::<u32, f32, u32, DummyState>::new(1.4);
-    //
-    //     let selection_policy = UctSelectionPolicy::<u32, f32, u32, DummyState>::new(1.4);
-    //     let selected_child = selection_policy.select_child(&tree, tree.root);
-    //     assert!(selected_child.is_some());
-    //     let selected_child = selected_child.unwrap();
-    //     let selected_child = tree.get_node_from_nodekey(selected_child);
-    //     assert_eq!(selected_child.visits, 79);
-    //     assert_eq!(selected_child.wins, 60);
-    // }
+    // As per p163, if C = 1.4, then the first child is selected. Unlike the book example,
+    // rather than stop at the 60/79 node, we keep going all the way to the correct leaf node, which
+    // is the 27/35 noe.
+    #[test]
+    fn test_mcts_tree_small_tree_c_14_first_child_selected() {
+        let tree = build_test_tree();
+        let selected_child_node_key = uct_select(&tree, 1.4);
+        let selected_child = tree.get_node_from_nodekey(selected_child_node_key);
+        assert_eq!(selected_child.visits, 35);
+        assert_eq!(selected_child.wins, 27);
+    }
 
     //
     // // Test a small pre-built tree from chapter 5 page 162, just first level.
     // //
     // // As per p163, if C = 1.5, then the third child is selected.
-    // #[test]
-    // fn test_mcts_tree_small_tree_c_15_third_child_selected() {
-    //     let tree = build_test_tree();
-    //     let selection_policy = UctSelectionPolicy::<u32, f32, u32, DummyState>::new(1.5);
-    //     let selected_child = selection_policy.select_child(&tree, tree.root);
-    //     assert!(selected_child.is_some());
-    //     let selected_child = selected_child.unwrap();
-    //     let selected_child = tree.get_node_from_nodekey(selected_child);
-    //     assert_eq!(selected_child.visits, 11);
-    //     assert_eq!(selected_child.wins, 2);
-    // }
+    #[test]
+    fn test_mcts_tree_small_tree_c_15_third_child_selected() {
+        let tree = build_test_tree();
+        let selected_child_node_key = uct_select(&tree, 1.5);
+        let selected_child = tree.get_node_from_nodekey(selected_child_node_key);
+        assert_eq!(selected_child.visits, 11);
+        assert_eq!(selected_child.wins, 2);
+    }
 }
