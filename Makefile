@@ -15,3 +15,6 @@ install-mac:
 
 run-nn-test-mac:
 	pyenv local aima-rs && cd src && cargo run --bin nn-test
+
+test:
+	pyenv local aima-rs && cd src && cargo test --all
