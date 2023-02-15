@@ -15,15 +15,20 @@
  * limitations under the License.
  */
 
-use rand::prelude::SliceRandom;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
+use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+use rand::seq::SliceRandom;
 use slotmap::new_key_type;
+
+type Int = i32;
+type Float = f64;
+type Rng = rand_pcg::Pcg64Mcg;
+type HashMap<K, V> = rustc_hash::FxHashMap<K, V>;
 
 trait Action: Clone + Copy + PartialEq + Eq + Hash + Debug + Display {}
 
@@ -31,13 +36,15 @@ trait State<_Action>: Clone + PartialEq + Eq + Hash + Debug + Display
 where
     _Action: Action,
 {
-    fn simulate(&self, playouts: Int, max_depth_per_playout: Int) -> Vec<SimulationResult>;
+    fn simulate(
+        &self,
+        playouts: Int,
+        max_depth_per_playout: Int,
+        rng: &mut Rng,
+    ) -> Vec<SimulationResult>;
     fn get_actions(&self) -> Vec<_Action>;
     fn get_next_state(&self, action: &_Action) -> Self;
 }
-
-type Int = i32;
-type Float = f64;
 
 new_key_type! { struct MctsNodeKey; }
 
@@ -54,7 +61,7 @@ impl<_State, _Action> MctsNode<_State, _Action> {
     fn new(parent: Option<MctsNodeKey>, state: Option<_State>) -> Self {
         Self {
             parent,
-            children: HashMap::new(),
+            children: HashMap::default(),
             visits: 0,
             wins: 0,
             state,
@@ -236,7 +243,7 @@ struct Mcts<_State, _Action> {
     exploration_constant: Float,
     playouts_per_simulation: Int,
     max_depth_per_playout: Int,
-    rng:
+    rng: Rc<RefCell<Rng>>,
 }
 
 impl<_State, _Action> Mcts<_State, _Action>
@@ -250,6 +257,7 @@ where
         exploration_constant: Float,
         playouts_per_simulation: Int,
         max_depth_per_playout: Int,
+        rng: Rng,
     ) -> Self {
         Mcts::new_from_tree(
             MctsTree::new(root_state),
@@ -257,6 +265,7 @@ where
             exploration_constant,
             playouts_per_simulation,
             max_depth_per_playout,
+            rng,
         )
     }
 
@@ -267,6 +276,7 @@ where
         exploration_constant: Float,
         playouts_per_simulation: Int,
         max_depth_per_playout: Int,
+        rng: Rng,
     ) -> Self {
         Self {
             tree: Rc::new(RefCell::new(tree)),
@@ -274,6 +284,7 @@ where
             exploration_constant,
             playouts_per_simulation,
             max_depth_per_playout,
+            rng: Rc::new(RefCell::new(rng)),
         }
     }
 
@@ -302,11 +313,13 @@ where
             let tree = Rc::clone(&self.tree);
             let tree = tree.borrow();
             let node = tree.get_node_from_nodekey(node_key);
-            let result = node
-                .state
-                .as_ref()
-                .unwrap()
-                .simulate(self.playouts_per_simulation, self.max_depth_per_playout);
+            let rng = Rc::clone(&self.rng);
+            let mut rng = rng.borrow_mut();
+            let result = node.state.as_ref().unwrap().simulate(
+                self.playouts_per_simulation,
+                self.max_depth_per_playout,
+                &mut rng,
+            );
             result
         };
 
@@ -346,7 +359,9 @@ where
         let (random_child, new_state) = {
             let tree = Rc::clone(&self.tree);
             let tree = tree.borrow();
-            let random_action = &actions.choose(&mut rand::thread_rng()).unwrap();
+            let random_action = &actions
+                .choose(&mut self.rng.borrow_mut().deref_mut())
+                .unwrap();
             let random_child = *tree
                 .get_children_nodekeys(node_key)
                 .get(random_action)
@@ -403,8 +418,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use approx::assert_abs_diff_eq;
     use std::fmt::Formatter;
+
+    use approx::assert_abs_diff_eq;
+    use rand::SeedableRng;
 
     use super::*;
 
@@ -443,14 +460,14 @@ mod tests {
     }
 
     // For this test we can't lose, there is just an optimal win path.
-    fn playout(state: MyState, max_depth: Int) -> SimulationResult {
+    fn playout(state: MyState, max_depth: Int, rng: &mut Rng) -> SimulationResult {
         let mut i = 0;
         while i < max_depth {
             let actions = state.get_actions();
 
             // Here we choose  a random action. You would probably want to choose the best action
             // based on some heuristic.
-            let action = actions.choose(&mut rand::thread_rng()).unwrap();
+            let action = actions.choose(rng).unwrap();
 
             let next_state = state.get_next_state(action);
             if next_state.data > 200 {
@@ -464,9 +481,14 @@ mod tests {
     // In our test state, moving up twice are the best actions.
     impl State<MyAction> for MyState {
         // If data is larger than 200 then the simulation is a win, else it is a loss.
-        fn simulate(&self, playouts: Int, max_depth_per_playout: Int) -> Vec<SimulationResult> {
+        fn simulate(
+            &self,
+            playouts: Int,
+            max_depth_per_playout: Int,
+            rng: &mut Rng,
+        ) -> Vec<SimulationResult> {
             (0..playouts)
-                .map(|_| playout(self.clone(), max_depth_per_playout))
+                .map(|_| playout(self.clone(), max_depth_per_playout, rng))
                 .collect()
         }
 
@@ -494,13 +516,14 @@ mod tests {
     type MyMcts = Mcts<MyState, MyAction>;
     type MyMctsTree = MctsTree<MyState, MyAction>;
 
-    fn new_my_mcts() -> MyMcts {
+    fn new_my_mcts(rng: Rng) -> MyMcts {
         Mcts::new(
             MyState { data: 0 },
             IterationLimitKind::Iterations(1000),
             1.0,
             100,
             10,
+            rng,
         )
     }
 
@@ -681,12 +704,14 @@ mod tests {
 
     #[test]
     fn test_mcts_iterations() {
+        let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(42);
         let mut mcts = MyMcts::new(
             MyState { data: 0 },
             IterationLimitKind::Iterations(20),
             std::f64::consts::SQRT_2,
             1,  /* playouts_per_simulation */
             10, /* max_depth_per_playout */
+            rng,
         );
         mcts.run();
 
