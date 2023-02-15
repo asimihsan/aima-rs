@@ -705,12 +705,14 @@ mod tests {
     #[test]
     fn test_mcts_iterations() {
         let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(42);
+        let playouts_per_simulation = 10;
+        let max_depth_per_playout = 10;
         let mut mcts = MyMcts::new(
             MyState { data: 0 },
-            IterationLimitKind::Iterations(20),
+            IterationLimitKind::Iterations(10),
             std::f64::consts::SQRT_2,
-            1,  /* playouts_per_simulation */
-            10, /* max_depth_per_playout */
+            playouts_per_simulation,
+            max_depth_per_playout,
             rng,
         );
         mcts.run();
@@ -719,6 +721,25 @@ mod tests {
         let tree = tree.borrow();
         println!("MCTS tree: {}", tree);
 
-        let _x = 1 + 2;
+        // Verify that the root node has been visited the expected number of times.
+        let root_node = tree.get_root();
+        assert_eq!(
+            root_node.visits,
+            playouts_per_simulation * max_depth_per_playout
+        );
+
+        // Verify that up is the best action. Best is defined as the action with the highest
+        // number of **visits** (not wins!).
+        let mut actions_and_visits: Vec<(MyAction, Int)> = root_node
+            .children
+            .iter()
+            .map(|(action, child_node_key)| {
+                let child_node = tree.get_node_from_nodekey(*child_node_key);
+                let visits = child_node.visits;
+                (*action, visits)
+            })
+            .collect();
+        actions_and_visits.sort_unstable_by(|(_, visits1), (_, visits2)| visits2.cmp(visits1));
+        assert_eq!(actions_and_visits[0].0, MyAction::Up);
     }
 }
