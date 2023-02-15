@@ -18,15 +18,16 @@
 use rand::prelude::SliceRandom;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use slotmap::new_key_type;
 
-trait Action: Clone + Copy + PartialEq + Eq + Hash {}
+trait Action: Clone + Copy + PartialEq + Eq + Hash + Debug {}
 
-trait State<_Action>: Clone + PartialEq + Eq + Hash
+trait State<_Action>: Clone + PartialEq + Eq + Hash + Debug
 where
     _Action: Action,
 {
@@ -65,6 +66,57 @@ impl<_State, _Action> MctsNode<_State, _Action> {
 struct MctsTree<_State, _Action> {
     nodes: slotmap::SlotMap<MctsNodeKey, MctsNode<_State, _Action>>,
     root: MctsNodeKey,
+}
+
+// implement Display for MctsTree. Pretty print the tree. Go level-by-level. For each node,
+// print the action that leads to it, visits, and wins, don't print parent.
+impl<_State, _Action> Display for MctsTree<_State, _Action>
+where
+    _State: State<_Action>,
+    _Action: Action,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut queue = std::collections::VecDeque::new();
+        queue.push_back(self.root);
+        let mut level = 0;
+        while !queue.is_empty() {
+            let mut level_queue = std::collections::VecDeque::new();
+            writeln!(f, "Level {}", level)?;
+            while !queue.is_empty() {
+                let node = queue.pop_front().unwrap();
+                let node = self.get_node_from_nodekey(node);
+                let parent = node.parent;
+                let parent = parent.map(|parent| self.get_node_from_nodekey(parent));
+                let parent = parent.map(|parent| parent.state.as_ref());
+                let parent = parent.flatten();
+                let state = node.state.as_ref();
+                let action = parent.and_then(|parent| {
+                    state.and_then(|state| {
+                        parent
+                            .get_actions()
+                            .iter()
+                            .find(|action| parent.get_next_state(action) == *state)
+                            .copied()
+                    })
+                });
+                let action = action.map(|action| format!("{:?}", action));
+                let action = action.unwrap_or_else(|| "root".to_string());
+                let visits = node.visits;
+                let wins = node.wins;
+                writeln!(
+                    f,
+                    "  action: {}, visits: {}, wins: {}",
+                    action, visits, wins
+                )?;
+                for child in node.children.values() {
+                    level_queue.push_back(*child);
+                }
+            }
+            queue = level_queue;
+            level += 1;
+        }
+        Ok(())
+    }
 }
 
 impl<_State, _Action> MctsTree<_State, _Action>
@@ -114,12 +166,22 @@ where
     }
 }
 
+/// uct_score is the UCT score function. It is a combination of exploitation and exploration.
+///
+/// See Chapter 5 page 163.
+///
+/// Note that if the current node is not visited, the formula in the book would be divide-by-zero
+/// and give NaN. In this implementation we return +inf instead. This means that all children
+/// nodes are visited at least once.
 fn uct_score(
     node_visits: Int,
     node_wins: Int,
     parent_visits: Int,
     exploration_constant: Float,
 ) -> Float {
+    if node_visits == 0 {
+        return Float::INFINITY;
+    }
     let node_wins_float = Float::from(node_wins);
     let node_visits_float = Float::from(node_visits);
     let parent_visits_float = Float::from(parent_visits);
@@ -145,7 +207,7 @@ where
             break;
         }
         let parent_visits = tree.get_node_from_nodekey(node).visits;
-        let (action, _best_child, _score) = children
+        let all_scores: Vec<(&_Action, &MctsNodeKey, Float)> = children
             .iter()
             .map(|(action, child)| {
                 let child_node = tree.get_node_from_nodekey(*child);
@@ -157,9 +219,14 @@ where
                 );
                 (action, child, score)
             })
-            .max_by(|(_, _, score1), (_, _, score2)| score1.partial_cmp(score2).unwrap())
-            .unwrap();
-        node = *children.get(action).unwrap();
+            .collect::<Vec<(&_Action, &MctsNodeKey, Float)>>();
+        let action_child_max_score: Option<&(&_Action, &MctsNodeKey, Float)> = all_scores
+            .iter()
+            .max_by(|(_, _, score1), (_, _, score2)| score1.partial_cmp(score2).unwrap());
+        if action_child_max_score.is_none() {
+            let _x = 1 + 2;
+        }
+        node = *action_child_max_score.unwrap().1;
     }
     node
 }
@@ -279,7 +346,8 @@ where
             let tree = Rc::clone(&self.tree);
             let mut tree = tree.borrow_mut();
             for action in &actions {
-                tree.add_child(None, node_key, *action);
+                let next_state = state.get_next_state(action);
+                tree.add_child(Some(next_state), node_key, *action);
             }
         }
 
@@ -307,13 +375,22 @@ where
         let mut node_key = node_key;
         let tree = Rc::clone(&self.tree);
         let mut tree = tree.borrow_mut();
-        for result in results {
-            let node = tree.get_mut_node_from_nodekey(node_key);
-            node.visits += 1;
-            if result == SimulationResult::Win {
-                node.wins += 1;
+        loop {
+            let mut node = tree.get_mut_node_from_nodekey(node_key);
+            for result in &results {
+                node.visits += 1;
+                match result {
+                    SimulationResult::Win => node.wins += 1,
+                    SimulationResult::NotWin => {}
+                }
             }
-            node_key = node.parent.unwrap();
+            match node.parent {
+                None => break,
+                Some(parent_node_key) => {
+                    node_key = parent_node_key;
+                }
+            }
+            node = tree.get_mut_node_from_nodekey(node_key);
         }
     }
 
@@ -588,6 +665,10 @@ mod tests {
             1, /* playouts_per_simulation */
         );
         mcts.run();
+
+        let tree = Rc::clone(&mcts.tree);
+        let tree = tree.borrow();
+        println!("MCTS tree: {}", tree);
 
         let _x = 1 + 2;
     }
