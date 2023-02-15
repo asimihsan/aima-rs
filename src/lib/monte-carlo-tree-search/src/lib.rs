@@ -25,13 +25,13 @@ use std::time::{Duration, Instant};
 
 use slotmap::new_key_type;
 
-trait Action: Clone + Copy + PartialEq + Eq + Hash + Debug {}
+trait Action: Clone + Copy + PartialEq + Eq + Hash + Debug + Display {}
 
-trait State<_Action>: Clone + PartialEq + Eq + Hash + Debug
+trait State<_Action>: Clone + PartialEq + Eq + Hash + Debug + Display
 where
     _Action: Action,
 {
-    fn simulate(&self, playouts: Int) -> Vec<SimulationResult>;
+    fn simulate(&self, playouts: Int, max_depth_per_playout: Int) -> Vec<SimulationResult>;
     fn get_actions(&self) -> Vec<_Action>;
     fn get_next_state(&self, action: &_Action) -> Self;
 }
@@ -68,53 +68,38 @@ struct MctsTree<_State, _Action> {
     root: MctsNodeKey,
 }
 
-// implement Display for MctsTree. Pretty print the tree. Go level-by-level. For each node,
-// print the action that leads to it, visits, and wins, don't print parent.
+// implement Display for MctsTree. Pretty print the tree. Print all paths in depth-first order.
+// Don't print the state, just print the action that leads to the node, the visits and wins.
 impl<_State, _Action> Display for MctsTree<_State, _Action>
 where
     _State: State<_Action>,
     _Action: Action,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut queue = std::collections::VecDeque::new();
-        queue.push_back(self.root);
-        let mut level = 0;
-        while !queue.is_empty() {
-            let mut level_queue = std::collections::VecDeque::new();
-            writeln!(f, "Level {}", level)?;
-            while !queue.is_empty() {
-                let node = queue.pop_front().unwrap();
-                let node = self.get_node_from_nodekey(node);
-                let parent = node.parent;
-                let parent = parent.map(|parent| self.get_node_from_nodekey(parent));
-                let parent = parent.map(|parent| parent.state.as_ref());
-                let parent = parent.flatten();
-                let state = node.state.as_ref();
-                let action = parent.and_then(|parent| {
-                    state.and_then(|state| {
-                        parent
-                            .get_actions()
-                            .iter()
-                            .find(|action| parent.get_next_state(action) == *state)
-                            .copied()
-                    })
-                });
-                let action = action.map(|action| format!("{:?}", action));
-                let action = action.unwrap_or_else(|| "root".to_string());
-                let visits = node.visits;
-                let wins = node.wins;
-                writeln!(
-                    f,
-                    "  action: {}, visits: {}, wins: {}",
-                    action, visits, wins
-                )?;
-                for child in node.children.values() {
-                    level_queue.push_back(*child);
-                }
+        let mut s = String::new();
+        let root = self.get_root_nodekey();
+        let mut stack: Vec<(MctsNodeKey, Option<_Action>, usize)> = vec![(root, None, 0)];
+        while let Some((node, action, depth)) = stack.pop() {
+            let node = self.get_node_from_nodekey(node);
+            let indent = " ".repeat(depth * 2);
+            if let Some(action) = action {
+                s.push_str(&format!(
+                    "{}{}: {} / {}",
+                    indent, action, node.wins, node.visits
+                ));
+            } else {
+                s.push_str(&format!("{}root: {} / {}", indent, node.wins, node.visits));
             }
-            queue = level_queue;
-            level += 1;
+            stack.extend(
+                node.children
+                    .iter()
+                    .map(|(action, child)| (*child, Some(*action), depth + 1)),
+            );
+            if !stack.is_empty() {
+                s.push_str("\n");
+            }
         }
+        write!(f, "{}", s).expect("Failed to write to string.");
         Ok(())
     }
 }
@@ -250,6 +235,8 @@ struct Mcts<_State, _Action> {
     iteration_limit: IterationLimitKind,
     exploration_constant: Float,
     playouts_per_simulation: Int,
+    max_depth_per_playout: Int,
+    rng:
 }
 
 impl<_State, _Action> Mcts<_State, _Action>
@@ -262,12 +249,14 @@ where
         iteration_limit: IterationLimitKind,
         exploration_constant: Float,
         playouts_per_simulation: Int,
+        max_depth_per_playout: Int,
     ) -> Self {
         Mcts::new_from_tree(
             MctsTree::new(root_state),
             iteration_limit,
             exploration_constant,
             playouts_per_simulation,
+            max_depth_per_playout,
         )
     }
 
@@ -277,12 +266,14 @@ where
         iteration_limit: IterationLimitKind,
         exploration_constant: Float,
         playouts_per_simulation: Int,
+        max_depth_per_playout: Int,
     ) -> Self {
         Self {
             tree: Rc::new(RefCell::new(tree)),
             iteration_limit,
             exploration_constant,
             playouts_per_simulation,
+            max_depth_per_playout,
         }
     }
 
@@ -315,7 +306,7 @@ where
                 .state
                 .as_ref()
                 .unwrap()
-                .simulate(self.playouts_per_simulation);
+                .simulate(self.playouts_per_simulation, self.max_depth_per_playout);
             result
         };
 
@@ -413,6 +404,7 @@ where
 #[cfg(test)]
 mod tests {
     use approx::assert_abs_diff_eq;
+    use std::fmt::Formatter;
 
     use super::*;
 
@@ -426,6 +418,17 @@ mod tests {
 
     impl Action for MyAction {}
 
+    impl Display for MyAction {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            match self {
+                MyAction::Up => write!(f, "Up"),
+                MyAction::Down => write!(f, "Down"),
+                MyAction::Left => write!(f, "Left"),
+                MyAction::Right => write!(f, "Right"),
+            }
+        }
+    }
+
     // Some dummy state that is associated with MCTS nodes. You would put e.g. "whose turn is it",
     // "what is the board", etc. here. You need to state to know what applying the action does.
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -433,19 +436,38 @@ mod tests {
         pub data: u32,
     }
 
+    impl Display for MyState {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            write!(f, "MyState {{ data: {} }}", self.data)
+        }
+    }
+
+    // For this test we can't lose, there is just an optimal win path.
+    fn playout(state: MyState, max_depth: Int) -> SimulationResult {
+        let mut i = 0;
+        while i < max_depth {
+            let actions = state.get_actions();
+
+            // Here we choose  a random action. You would probably want to choose the best action
+            // based on some heuristic.
+            let action = actions.choose(&mut rand::thread_rng()).unwrap();
+
+            let next_state = state.get_next_state(action);
+            if next_state.data > 200 {
+                return SimulationResult::Win;
+            }
+            i += 1;
+        }
+        SimulationResult::NotWin
+    }
+
     // In our test state, moving up twice are the best actions.
     impl State<MyAction> for MyState {
         // If data is larger than 200 then the simulation is a win, else it is a loss.
-        fn simulate(&self, playouts: Int) -> Vec<SimulationResult> {
-            let mut results = Vec::new();
-            for _ in 0..playouts {
-                if self.data > 200 {
-                    results.push(SimulationResult::Win);
-                } else {
-                    results.push(SimulationResult::NotWin);
-                }
-            }
-            results
+        fn simulate(&self, playouts: Int, max_depth_per_playout: Int) -> Vec<SimulationResult> {
+            (0..playouts)
+                .map(|_| playout(self.clone(), max_depth_per_playout))
+                .collect()
         }
 
         // Regardless of the current state, say that all actions are valid.
@@ -478,6 +500,7 @@ mod tests {
             IterationLimitKind::Iterations(1000),
             1.0,
             100,
+            10,
         )
     }
 
@@ -662,7 +685,8 @@ mod tests {
             MyState { data: 0 },
             IterationLimitKind::Iterations(20),
             std::f64::consts::SQRT_2,
-            1, /* playouts_per_simulation */
+            1,  /* playouts_per_simulation */
+            10, /* max_depth_per_playout */
         );
         mcts.run();
 
