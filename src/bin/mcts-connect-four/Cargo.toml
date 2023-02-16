@@ -1,0 +1,10 @@
+[package]
+name = "mcts-connect-four"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+connect-four = { path = "../../lib/connect-four" }
+monte-carlo-tree-search = { path = "../../lib/monte-carlo-tree-search" }

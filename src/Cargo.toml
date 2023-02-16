@@ -3,7 +3,9 @@
 members = [
     "bin/ch02-ex11-run-reflex-agent-once",
     "bin/ch02-ex12-evaluate-reflex-agent",
+    "bin/mcts-connect-four",
     "bin/neural-networks-test",
+    "lib/connect-four",
     "lib/monte-carlo-tree-search",
     "lib/neural-networks",
     "lib/vacuum-cleaner",
