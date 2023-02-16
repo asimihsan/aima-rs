@@ -58,21 +58,53 @@ impl<const WIDTH: usize, const HEIGHT: usize> Board<WIDTH, HEIGHT> {
     // pop will remove a piece from the board. It will return None if the column is empty.
     // This removes the first non-empty cell in the column, going from the bottom up.
     // This will shift down all the pieces above it. This is used for the popout variant.
-    pub fn pop(&mut self, col: usize) -> Option<()> {
+    //
+    // You can only pop from a column if the bottom piece is yours.
+    pub fn pop(&mut self, col: usize, player: Player) -> Option<()> {
         if col >= WIDTH {
             return None;
         }
         for row in (0..HEIGHT).rev() {
             if self.cells[row][col] != Cell::Empty {
-                self.cells[row][col] = Cell::Empty;
-                for row in row..HEIGHT - 1 {
-                    self.cells[row][col] = self.cells[row + 1][col];
+                if self.cells[row][col]
+                    == match player {
+                        Player::Player1 => Cell::Player1,
+                        Player::Player2 => Cell::Player2,
+                    }
+                {
+                    self.cells[row][col] = Cell::Empty;
+                    return Some(());
+                } else {
+                    return None;
                 }
-                return Some(());
             }
         }
         None
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Move {
+    Insert(Player, usize),
+    Pop(Player, usize),
+}
+
+pub fn get_legal_moves<const WIDTH: usize, const HEIGHT: usize>(
+    board: &Board<WIDTH, HEIGHT>,
+    player: Player,
+) -> Vec<Move> {
+    let mut moves = Vec::new();
+    for col in 0..WIDTH {
+        if board.cells[HEIGHT - 1][col] == Cell::Empty {
+            moves.push(Move::Insert(player, col));
+        }
+    }
+    for col in 0..WIDTH {
+        if board.cells[HEIGHT - 1][col] != Cell::Empty {
+            moves.push(Move::Pop(player, col));
+        }
+    }
+    moves
 }
 
 #[cfg(test)]
