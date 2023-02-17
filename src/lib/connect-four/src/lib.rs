@@ -57,6 +57,24 @@ impl<const WIDTH: usize, const HEIGHT: usize> Board<WIDTH, HEIGHT> {
         Ok(self.cells[row][col])
     }
 
+    pub fn get_col(&self, col: usize) -> Result<[Cell; HEIGHT], ConnectFourError> {
+        if col >= WIDTH {
+            return Err(ConnectFourError::InvalidColumn(col));
+        }
+        let mut result = [Cell::Empty; HEIGHT];
+        for row in 0..HEIGHT {
+            result[row] = self.cells[row][col];
+        }
+        Ok(result)
+    }
+
+    pub fn get_row(&self, row: usize) -> Result<[Cell; WIDTH], ConnectFourError> {
+        if row >= HEIGHT {
+            return Err(ConnectFourError::InvalidRow(row));
+        }
+        Ok(self.cells[row])
+    }
+
     pub fn can_insert(&self, col: usize) -> Result<(), ConnectFourError> {
         if col >= WIDTH {
             return Err(ConnectFourError::InvalidColumn(col));
@@ -117,13 +135,11 @@ impl<const WIDTH: usize, const HEIGHT: usize> Board<WIDTH, HEIGHT> {
     pub fn pop(&mut self, col: usize, player: Player) -> Result<(), ConnectFourError> {
         match self.can_pop(col, player) {
             Ok(()) => {
-                for row in (0..HEIGHT).rev() {
-                    if self.cells[row][col] != Cell::Empty {
-                        self.cells[row][col] = Cell::Empty;
-                        return Ok(());
-                    }
+                // for this column, copy the i+1 higher element down to i, in reverse order
+                for row in (0..HEIGHT - 1).rev() {
+                    self.cells[row][col] = self.cells[row + 1][col];
                 }
-                unreachable!()
+                Ok(())
             }
             Err(e) => Err(e),
         }
@@ -167,15 +183,16 @@ pub fn get_legal_moves<const WIDTH: usize, const HEIGHT: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn test_board_starts_empty() {
-        let mut board = Board::<7, 6>::new();
+        let board = Board::<7, 6>::new();
         for row in 0..6 {
             for col in 0..7 {
                 let get = board
                     .get(col, row)
-                    .expect(format!("col: {}, row: {}", col, row).as_str());
+                    .unwrap_or_else(|_| panic!("col: {}, row: {}", col, row));
                 assert_eq!(get, Cell::Empty, "col: {}, row: {}", col, row);
             }
         }
@@ -237,9 +254,68 @@ mod tests {
             for col in 0..7 {
                 let get = board
                     .get(col, row)
-                    .expect(format!("col: {}, row: {}", col, row).as_str());
+                    .unwrap_or_else(|_| panic!("col: {}, row: {}", col, row));
                 assert_eq!(get, Cell::Empty, "col: {}, row: {}", col, row);
             }
+        }
+    }
+
+    // write a property test to test that inserting and popping works as expected.
+    proptest! {
+        #[test]
+        fn test_board_insert_then_pop_means_empty(
+            col in 0..7usize,
+            player in prop_oneof![Just(Player::Player1), Just(Player::Player2)],
+        ) {
+            let mut board = Board::<7, 6>::new();
+            board.insert(col, player).expect("insert failed");
+            board.pop(col, player).expect("pop failed");
+
+            for row in 0..6 {
+                for col in 0..7 {
+                    let get = board
+                        .get(col, row)
+                        .unwrap_or_else(|_| panic!("col: {}, row: {}", col, row));
+                    assert_eq!(get, Cell::Empty, "col: {}, row: {}", col, row);
+                }
+            }
+        }
+    }
+
+    // write a property test that inserts many times then pops once, and checks
+    // that the first inserted piece is the one that is popped.
+    fn vec_of_player() -> impl Strategy<Value = Vec<Player>> {
+        prop::collection::vec(
+            prop_oneof![Just(Player::Player1), Just(Player::Player2)],
+            1..6,
+        )
+    }
+
+    proptest! {
+        #[test]
+        fn test_board_many_inserts_then_one_pop(
+            col in 0..7usize,
+            player in vec_of_player(),
+        ) {
+            let mut board = Board::<7, 6>::new();
+            for p in &player {
+                board.insert(col, *p).expect("insert failed");
+            }
+
+            let initial_col = board.get_col(col).expect("get_col failed");
+
+            let last_player = &player.last().unwrap();
+            board.pop(col, **last_player).expect("pop failed");
+            let final_col = board.get_col(col).expect("get_col failed");
+
+            let initial_col_non_empty = initial_col.iter().filter(|c| **c != Cell::Empty).collect::<Vec<_>>();
+            let final_col_non_empty = final_col.iter().filter(|c| **c != Cell::Empty).collect::<Vec<_>>();
+
+            // final_col should have one more empty cell that initial_col
+            assert_eq!(initial_col_non_empty.len(), final_col_non_empty.len() + 1);
+
+            // initial_col_non_empty except first element is same as final
+            assert_eq!(initial_col_non_empty[1..], final_col_non_empty[..]);
         }
     }
 }
