@@ -30,6 +30,15 @@ pub enum Player {
     Player2,
 }
 
+impl std::fmt::Display for Player {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Player::Player1 => write!(f, "Player 1"),
+            Player::Player2 => write!(f, "Player 2"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Board<const WIDTH: usize, const HEIGHT: usize> {
     pub cells: [[Cell; WIDTH]; HEIGHT],
@@ -38,6 +47,30 @@ pub struct Board<const WIDTH: usize, const HEIGHT: usize> {
 impl<const WIDTH: usize, const HEIGHT: usize> Default for Board<WIDTH, HEIGHT> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl<const WIDTH: usize, const HEIGHT: usize> std::fmt::Display for Board<WIDTH, HEIGHT> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = String::with_capacity((WIDTH * 2 + 1) * HEIGHT);
+        for row in 0..HEIGHT {
+            for col in 0..WIDTH {
+                let cell = self.cells[row][col];
+                let c = match cell {
+                    Cell::Empty => '.',
+                    Cell::Player(Player::Player1) => '1',
+                    Cell::Player(Player::Player2) => '2',
+                };
+                s.push(c);
+                if col < WIDTH - 1 {
+                    s.push(' ');
+                }
+            }
+            if row < HEIGHT - 1 {
+                s.push('\n');
+            }
+        }
+        write!(f, "{}", s)
     }
 }
 

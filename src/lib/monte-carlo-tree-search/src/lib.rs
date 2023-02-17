@@ -103,7 +103,7 @@ where
                     .map(|(action, child)| (*child, Some(*action), depth + 1)),
             );
             if !stack.is_empty() {
-                s.push_str("\n");
+                s.push('\n');
             }
         }
         write!(f, "{}", s).expect("Failed to write to string.");
@@ -237,7 +237,7 @@ pub enum IterationLimitKind {
 
 // Mcts is the main Monte Carlo Tree Search algorithm.
 // See section 5.4 Monte Carlo Tree Search page 162 and 163.
-struct Mcts<_State, _Action> {
+pub struct Mcts<_State, _Action> {
     tree: Rc<RefCell<MctsTree<_State, _Action>>>,
     iteration_limit: IterationLimitKind,
     exploration_constant: Float,
@@ -251,13 +251,13 @@ where
     _State: State<_Action>,
     _Action: Action,
 {
-    fn new(
+    pub fn new(
         root_state: _State,
         iteration_limit: IterationLimitKind,
         exploration_constant: Float,
         playouts_per_simulation: Int,
         max_depth_per_playout: Int,
-        rng: Rng,
+        rng: Rc<RefCell<Rng>>,
     ) -> Self {
         Mcts::new_from_tree(
             MctsTree::new(root_state),
@@ -276,7 +276,7 @@ where
         exploration_constant: Float,
         playouts_per_simulation: Int,
         max_depth_per_playout: Int,
-        rng: Rng,
+        rng: Rc<RefCell<Rng>>,
     ) -> Self {
         Self {
             tree: Rc::new(RefCell::new(tree)),
@@ -284,11 +284,11 @@ where
             exploration_constant,
             playouts_per_simulation,
             max_depth_per_playout,
-            rng: Rc::new(RefCell::new(rng)),
+            rng: Rc::clone(&rng),
         }
     }
 
-    fn run(&mut self) {
+    pub fn run(&mut self) {
         match self.iteration_limit {
             IterationLimitKind::Iterations(iterations) => {
                 for _ in 0..iterations {
@@ -400,7 +400,7 @@ where
         }
     }
 
-    fn get_best_action(&self) -> Option<_Action> {
+    pub fn best_action(&self) -> Option<_Action> {
         let tree = self.tree.borrow();
         let root_nodekey = tree.get_root_nodekey();
         let mut best_action = None;
@@ -516,7 +516,7 @@ mod tests {
     type MyMcts = Mcts<MyState, MyAction>;
     type MyMctsTree = MctsTree<MyState, MyAction>;
 
-    fn new_my_mcts(rng: Rng) -> MyMcts {
+    fn new_my_mcts(rng: Rc<RefCell<Rng>>) -> MyMcts {
         Mcts::new(
             MyState { data: 0 },
             IterationLimitKind::Iterations(1000),
@@ -704,7 +704,7 @@ mod tests {
 
     #[test]
     fn test_mcts_iterations() {
-        let mut rng = rand_pcg::Pcg64Mcg::seed_from_u64(42);
+        let mut rng = Rc::new(RefCell::new(rand_pcg::Pcg64::seed_from_u64(42)));
         let playouts_per_simulation = 10;
         let max_depth_per_playout = 10;
         let mut mcts = MyMcts::new(
@@ -730,16 +730,8 @@ mod tests {
 
         // Verify that up is the best action. Best is defined as the action with the highest
         // number of **visits** (not wins!).
-        let mut actions_and_visits: Vec<(MyAction, Int)> = root_node
-            .children
-            .iter()
-            .map(|(action, child_node_key)| {
-                let child_node = tree.get_node_from_nodekey(*child_node_key);
-                let visits = child_node.visits;
-                (*action, visits)
-            })
-            .collect();
-        actions_and_visits.sort_unstable_by(|(_, visits1), (_, visits2)| visits2.cmp(visits1));
-        assert_eq!(actions_and_visits[0].0, MyAction::Up);
+        let best_action = mcts.best_action();
+        assert!(best_action.is_some());
+        assert_eq!(best_action.unwrap(), MyAction::Up);
     }
 }

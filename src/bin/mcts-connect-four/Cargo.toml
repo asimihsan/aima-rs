@@ -8,3 +8,6 @@ edition = "2021"
 [dependencies]
 connect-four = { path = "../../lib/connect-four" }
 monte-carlo-tree-search = { path = "../../lib/monte-carlo-tree-search" }
+rand = "0.8.5"
+rand_pcg = "0.3.1"
+rayon = "1.6.1"
