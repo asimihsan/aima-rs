@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter};
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ConnectFourError {
     #[error("invalid column: {0}")]
@@ -28,7 +30,7 @@ pub enum Player {
     Player2,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Board<const WIDTH: usize, const HEIGHT: usize> {
     pub cells: [[Cell; WIDTH]; HEIGHT],
 }
@@ -129,35 +131,32 @@ impl<const WIDTH: usize, const HEIGHT: usize> Board<WIDTH, HEIGHT> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Move {
     Insert(usize),
     Pop(usize),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PlayerMove {
-    Player1(Move),
-    Player2(Move),
+impl Display for Move {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Move::Insert(col) => write!(f, "Insert({})", col),
+            Move::Pop(col) => write!(f, "Pop({})", col),
+        }
+    }
 }
 
 pub fn get_legal_moves<const WIDTH: usize, const HEIGHT: usize>(
     board: &Board<WIDTH, HEIGHT>,
     player: Player,
-) -> Vec<PlayerMove> {
+) -> Vec<Move> {
     let mut moves = Vec::new();
     for col in 0..WIDTH {
         if board.can_insert(col).is_ok() {
-            match player {
-                Player::Player1 => moves.push(PlayerMove::Player1(Move::Insert(col))),
-                Player::Player2 => moves.push(PlayerMove::Player2(Move::Insert(col))),
-            }
+            moves.push(Move::Insert(col));
         }
         if board.can_pop(col, player).is_ok() {
-            match player {
-                Player::Player1 => moves.push(PlayerMove::Player1(Move::Pop(col))),
-                Player::Player2 => moves.push(PlayerMove::Player2(Move::Pop(col))),
-            }
+            moves.push(Move::Pop(col));
         }
     }
     moves
@@ -279,16 +278,8 @@ mod tests {
             let legal_moves = get_legal_moves(&board, *player);
             assert_eq!(legal_moves.len(), 7);
             for col in 0..7 {
-                match player {
-                    Player::Player1 => {
-                        assert!(legal_moves.contains(&PlayerMove::Player1(Move::Insert(col))));
-                        assert!(!legal_moves.contains(&PlayerMove::Player1(Move::Pop(col))));
-                    }
-                    Player::Player2 => {
-                        assert!(legal_moves.contains(&PlayerMove::Player2(Move::Insert(col))));
-                        assert!(!legal_moves.contains(&PlayerMove::Player2(Move::Pop(col))));
-                    }
-                }
+                assert!(legal_moves.contains(&Move::Insert(col)));
+                assert!(!legal_moves.contains(&Move::Pop(col)));
             }
         }
     }

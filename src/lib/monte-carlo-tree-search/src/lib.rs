@@ -25,14 +25,14 @@ use std::time::{Duration, Instant};
 use rand::seq::SliceRandom;
 use slotmap::new_key_type;
 
-type Int = i32;
-type Float = f64;
-type Rng = rand_pcg::Pcg64Mcg;
-type HashMap<K, V> = rustc_hash::FxHashMap<K, V>;
+pub type Int = i32;
+pub type Float = f64;
+pub type Rng = rand_pcg::Pcg64;
+pub type HashMap<K, V> = rustc_hash::FxHashMap<K, V>;
 
-trait Action: Clone + Copy + PartialEq + Eq + Hash + Debug + Display {}
+pub trait Action: Clone + Copy + PartialEq + Eq + Hash + Debug {}
 
-trait State<_Action>: Clone + PartialEq + Eq + Hash + Debug + Display
+pub trait State<_Action>: Clone + PartialEq + Eq + Hash + Debug
 where
     _Action: Action,
 {
@@ -91,7 +91,7 @@ where
             let indent = " ".repeat(depth * 2);
             if let Some(action) = action {
                 s.push_str(&format!(
-                    "{}{}: {} / {}",
+                    "{}{:?}: {} / {}",
                     indent, action, node.wins, node.visits
                 ));
             } else {
@@ -224,7 +224,7 @@ where
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SimulationResult {
+pub enum SimulationResult {
     Win,
     NotWin,
 }
