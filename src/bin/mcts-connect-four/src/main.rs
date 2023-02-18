@@ -20,16 +20,30 @@ static ALLOC: snmalloc_rs::SnMalloc = snmalloc_rs::SnMalloc;
 
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct Action(connect_four::Move);
+
+impl Serialize for Action {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self.0 {
+            connect_four::Move::Insert(col) => {
+                serializer.serialize_str(&format!("Insert({})", col))
+            }
+            connect_four::Move::Pop(col) => serializer.serialize_str(&format!("Pop({})", col)),
+        }
+    }
+}
 
 impl monte_carlo_tree_search::Action for Action {}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 enum Player {
     Player1,
     Player2,
@@ -44,7 +58,7 @@ impl Into<connect_four::Player> for Player {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 struct State {
     board: connect_four::Board,
     turn: Player,

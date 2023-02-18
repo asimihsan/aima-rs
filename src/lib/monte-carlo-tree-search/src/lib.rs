@@ -76,6 +76,38 @@ struct MctsTree<_State: State<_Action>, _Action: Action> {
     root: MctsNodeKey,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct MctsNodeForSerialization<_State: State<_Action>, _Action: Action> {
+    visits: Int,
+    wins: Int,
+    children: HashMap<_Action, Box<MctsNodeForSerialization<_State, _Action>>>,
+
+    #[serde(skip)]
+    phantom_state: std::marker::PhantomData<_State>,
+}
+
+fn create_tree_for_serialization<_State: State<_Action>, _Action: Action>(
+    tree: &MctsTree<_State, _Action>,
+    node: MctsNodeKey,
+) -> MctsNodeForSerialization<_State, _Action> {
+    let node = tree.get_node_from_nodekey(node);
+    MctsNodeForSerialization {
+        children: node
+            .children
+            .iter()
+            .map(|(action, child)| {
+                (
+                    *action,
+                    Box::new(create_tree_for_serialization(tree, *child)),
+                )
+            })
+            .collect(),
+        visits: node.visits,
+        wins: node.wins,
+        phantom_state: std::marker::PhantomData,
+    }
+}
+
 // implement Display for MctsTree. Pretty print the tree. Print all paths in depth-first order.
 // Don't print the state, just print the action that leads to the node, the visits and wins.
 impl<_State, _Action> Display for MctsTree<_State, _Action>
@@ -292,8 +324,10 @@ where
     pub fn serialize_tree(&self) -> String {
         let tree = Rc::clone(&self.tree);
         let tree = tree.borrow();
-        let output = serde_json::to_string_pretty(tree.deref()).unwrap();
-        output
+        let tree = tree.deref();
+        let serialized_tree = create_tree_for_serialization(tree, tree.get_root_nodekey());
+        let output = serde_json::to_string_pretty(&serialized_tree);
+        output.unwrap()
     }
 
     pub fn run(&mut self) {
