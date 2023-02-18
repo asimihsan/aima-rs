@@ -1,4 +1,21 @@
-use std::fmt::{Display, Formatter};
+/*
+ * Copyright 2023 Asim Ihsan
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ConnectFourError {
@@ -18,16 +35,25 @@ pub enum ConnectFourError {
     ColumnNotYours(usize),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Cell {
     Empty,
     Player(Player),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Player {
     Player1,
     Player2,
+}
+
+impl Player {
+    pub fn other(&mut self) {
+        match self {
+            Player::Player1 => *self = Player::Player2,
+            Player::Player2 => *self = Player::Player1,
+        }
+    }
 }
 
 impl std::fmt::Display for Player {
@@ -39,22 +65,39 @@ impl std::fmt::Display for Player {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Board<const WIDTH: usize, const HEIGHT: usize> {
-    pub cells: [[Cell; WIDTH]; HEIGHT],
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Board {
+    pub cells: Vec<Vec<Cell>>,
+    width: usize,
+    height: usize,
 }
 
-impl<const WIDTH: usize, const HEIGHT: usize> Default for Board<WIDTH, HEIGHT> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<const WIDTH: usize, const HEIGHT: usize> std::fmt::Display for Board<WIDTH, HEIGHT> {
+// print out cells, and row and column numbers which start at 0.
+impl std::fmt::Display for Board {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut s = String::with_capacity((WIDTH * 2 + 1) * HEIGHT);
-        for row in 0..HEIGHT {
-            for col in 0..WIDTH {
+        let width = self.cells[0].len();
+        let height = self.cells.len();
+        let mut s = String::with_capacity((width * 2 + 1) * (height + 1));
+
+        // print column numbers. recall there will be row numbers on the left.
+        for col in 0..width {
+            if col == 0 {
+                s.push_str("  ");
+            }
+
+            s.push_str(&format!("{}", col));
+            if col == width - 1 {
+                s.push('\n');
+            } else {
+                s.push(' ');
+            }
+        }
+
+        for row in 0..height {
+            // print row numbers
+            s.push_str(&format!("{} ", row));
+
+            for col in 0..width {
                 let cell = self.cells[row][col];
                 let c = match cell {
                     Cell::Empty => '.',
@@ -62,11 +105,11 @@ impl<const WIDTH: usize, const HEIGHT: usize> std::fmt::Display for Board<WIDTH,
                     Cell::Player(Player::Player2) => '2',
                 };
                 s.push(c);
-                if col < WIDTH - 1 {
+                if col < width - 1 {
                     s.push(' ');
                 }
             }
-            if row < HEIGHT - 1 {
+            if row < height - 1 {
                 s.push('\n');
             }
         }
@@ -74,39 +117,46 @@ impl<const WIDTH: usize, const HEIGHT: usize> std::fmt::Display for Board<WIDTH,
     }
 }
 
-impl<const WIDTH: usize, const HEIGHT: usize> Board<WIDTH, HEIGHT> {
-    pub fn new() -> Self {
+impl Board {
+    pub fn new(width: usize, height: usize) -> Self {
+        let mut cells = Vec::with_capacity(height);
+        for _ in 0..height {
+            let mut row = Vec::with_capacity(width);
+            for _ in 0..width {
+                row.push(Cell::Empty);
+            }
+            cells.push(row);
+        }
         Self {
-            cells: [[Cell::Empty; WIDTH]; HEIGHT],
+            cells,
+            width,
+            height,
         }
     }
 
     pub fn get(&self, col: usize, row: usize) -> Result<Cell, ConnectFourError> {
-        if col >= WIDTH {
+        if col >= self.width {
             return Err(ConnectFourError::InvalidColumn(col));
         }
-        if row >= HEIGHT {
+        if row >= self.height {
             return Err(ConnectFourError::InvalidRow(row));
         }
         Ok(self.cells[row][col])
     }
 
-    pub fn get_col(&self, col: usize) -> Result<[Cell; HEIGHT], ConnectFourError> {
-        if col >= WIDTH {
+    pub fn get_col(&self, col: usize) -> Result<Vec<Cell>, ConnectFourError> {
+        if col >= self.width {
             return Err(ConnectFourError::InvalidColumn(col));
         }
-        let mut result = [Cell::Empty; HEIGHT];
-        for row in 0..HEIGHT {
-            result[row] = self.cells[row][col];
-        }
+        let result = (0..self.height).map(|row| self.cells[row][col]).collect();
         Ok(result)
     }
 
     pub fn can_insert(&self, col: usize) -> Result<(), ConnectFourError> {
-        if col >= WIDTH {
+        if col >= self.width {
             return Err(ConnectFourError::InvalidColumn(col));
         }
-        for row in (0..HEIGHT).rev() {
+        for row in (0..self.height).rev() {
             if self.cells[row][col] == Cell::Empty {
                 return Ok(());
             }
@@ -119,7 +169,7 @@ impl<const WIDTH: usize, const HEIGHT: usize> Board<WIDTH, HEIGHT> {
     pub fn insert(&mut self, col: usize, player: Player) -> Result<(), ConnectFourError> {
         match self.can_insert(col) {
             Ok(()) => {
-                for row in (0..HEIGHT).rev() {
+                for row in (0..self.height).rev() {
                     if self.cells[row][col] == Cell::Empty {
                         self.cells[row][col] = Cell::Player(player);
                         return Ok(());
@@ -132,14 +182,14 @@ impl<const WIDTH: usize, const HEIGHT: usize> Board<WIDTH, HEIGHT> {
     }
 
     pub fn can_pop(&self, col: usize, player: Player) -> Result<(), ConnectFourError> {
-        if col >= WIDTH {
+        if col >= self.width {
             return Err(ConnectFourError::InvalidColumn(col));
         }
         let col_cells = self.get_col(col)?;
-        if col_cells[HEIGHT - 1] == Cell::Empty {
+        if col_cells[self.height - 1] == Cell::Empty {
             return Err(ConnectFourError::ColumnEmpty(col));
         }
-        if col_cells[HEIGHT - 1] != Cell::Player(player) {
+        if col_cells[self.height - 1] != Cell::Player(player) {
             return Err(ConnectFourError::ColumnNotYours(col));
         }
         Ok(())
@@ -154,7 +204,7 @@ impl<const WIDTH: usize, const HEIGHT: usize> Board<WIDTH, HEIGHT> {
         match self.can_pop(col, player) {
             Ok(()) => {
                 // for this column, copy the i+1 higher element down to i, in reverse order
-                for row in (0..HEIGHT - 1).rev() {
+                for row in (0..self.height - 1).rev() {
                     self.cells[row + 1][col] = self.cells[row][col];
                 }
                 Ok(())
@@ -164,14 +214,14 @@ impl<const WIDTH: usize, const HEIGHT: usize> Board<WIDTH, HEIGHT> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Move {
     Insert(usize),
     Pop(usize),
 }
 
-impl Display for Move {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+impl std::fmt::Display for Move {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Move::Insert(col) => write!(f, "Insert({})", col),
             Move::Pop(col) => write!(f, "Pop({})", col),
@@ -179,12 +229,9 @@ impl Display for Move {
     }
 }
 
-pub fn get_legal_moves<const WIDTH: usize, const HEIGHT: usize>(
-    board: &Board<WIDTH, HEIGHT>,
-    player: Player,
-) -> Vec<Move> {
+pub fn get_legal_moves(board: &Board, player: Player) -> Vec<Move> {
     let mut moves = Vec::new();
-    for col in 0..WIDTH {
+    for col in 0..board.width {
         if board.can_insert(col).is_ok() {
             moves.push(Move::Insert(col));
         }
@@ -202,12 +249,10 @@ pub enum TerminalPosition {
     IsNotTerminal,
 }
 
-pub fn is_terminal_position<const WIDTH: usize, const HEIGHT: usize>(
-    board: &Board<WIDTH, HEIGHT>,
-) -> TerminalPosition {
+pub fn is_terminal_position(board: &Board) -> TerminalPosition {
     // check for a win
-    for row in 0..HEIGHT {
-        for col in 0..WIDTH {
+    for row in 0..board.height {
+        for col in 0..board.width {
             let cell1 = board.get(col, row).unwrap();
             if cell1 == Cell::Empty {
                 continue;
@@ -218,7 +263,7 @@ pub fn is_terminal_position<const WIDTH: usize, const HEIGHT: usize>(
             };
 
             // check horizontal
-            if col + 3 < WIDTH {
+            if col + 3 < board.width {
                 let cell2 = board.get(col + 1, row).unwrap();
                 let cell3 = board.get(col + 2, row).unwrap();
                 let cell4 = board.get(col + 3, row).unwrap();
@@ -228,7 +273,7 @@ pub fn is_terminal_position<const WIDTH: usize, const HEIGHT: usize>(
             }
 
             // check vertical
-            if row + 3 < HEIGHT {
+            if row + 3 < board.height {
                 let cell2 = board.get(col, row + 1).unwrap();
                 let cell3 = board.get(col, row + 2).unwrap();
                 let cell4 = board.get(col, row + 3).unwrap();
@@ -238,7 +283,7 @@ pub fn is_terminal_position<const WIDTH: usize, const HEIGHT: usize>(
             }
 
             // check diagonal down
-            if col + 3 < WIDTH && row + 3 < HEIGHT {
+            if col + 3 < board.width && row + 3 < board.height {
                 let cell2 = board.get(col + 1, row + 1).unwrap();
                 let cell3 = board.get(col + 2, row + 2).unwrap();
                 let cell4 = board.get(col + 3, row + 3).unwrap();
@@ -248,7 +293,7 @@ pub fn is_terminal_position<const WIDTH: usize, const HEIGHT: usize>(
             }
 
             // check diagonal up
-            if col + 3 < WIDTH && row >= 3 {
+            if col + 3 < board.width && row >= 3 {
                 let cell2 = board.get(col + 1, row - 1).unwrap();
                 let cell3 = board.get(col + 2, row - 2).unwrap();
                 let cell4 = board.get(col + 3, row - 3).unwrap();
@@ -272,11 +317,9 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
 
-    fn all_cells_empty<const WIDTH: usize, const HEIGHT: usize>(
-        board: &Board<WIDTH, HEIGHT>,
-    ) -> bool {
-        for row in 0..HEIGHT {
-            for col in 0..WIDTH {
+    fn all_cells_empty(board: &Board) -> bool {
+        for row in 0..board.height {
+            for col in 0..board.width {
                 if board.get(col, row).unwrap() != Cell::Empty {
                     return false;
                 }
@@ -287,7 +330,7 @@ mod tests {
 
     #[test]
     fn test_board_starts_empty() {
-        let board = Board::<7, 6>::new();
+        let board = Board::new(7, 6);
         for row in 0..6 {
             for col in 0..7 {
                 let get = board
@@ -300,7 +343,7 @@ mod tests {
 
     #[test]
     fn test_at_start_all_inserts_no_pops_legal() {
-        let board = Board::<7, 6>::new();
+        let board = Board::new(7, 6);
         for col in 0..7 {
             assert!(board.can_insert(col).is_ok());
             assert!(board.can_pop(col, Player::Player1).is_err());
@@ -319,7 +362,7 @@ mod tests {
 
     #[test]
     fn test_insert_then_invalid_pop_returns_error() {
-        let mut board = Board::<7, 6>::new();
+        let mut board = Board::new(7, 6);
         board.insert(0, Player::Player1).expect("insert failed");
         assert_eq!(
             board.can_pop(0, Player::Player2),
@@ -330,7 +373,7 @@ mod tests {
 
     #[test]
     fn test_empty_board_all_pops_illegal_due_to_column_empty() {
-        let board = Board::<7, 6>::new();
+        let board = Board::new(7, 6);
         for col in 0..7 {
             assert!(board.can_pop(col, Player::Player1) == Err(ConnectFourError::ColumnEmpty(col)));
             assert!(board.can_pop(col, Player::Player2) == Err(ConnectFourError::ColumnEmpty(col)));
@@ -339,7 +382,7 @@ mod tests {
 
     #[test]
     fn test_board_one_insert() {
-        let mut board = Board::<7, 6>::new();
+        let mut board = Board::new(7, 6);
         board.insert(0, Player::Player1).expect("insert failed");
 
         for row in 0..6 {
@@ -364,7 +407,7 @@ mod tests {
 
     #[test]
     fn test_board_one_insert_then_pop() {
-        let mut board = Board::<7, 6>::new();
+        let mut board = Board::new(7, 6);
         board.insert(0, Player::Player1).expect("insert failed");
         board.pop(0, Player::Player1).expect("pop failed");
 
@@ -373,7 +416,7 @@ mod tests {
 
     #[test]
     fn test_board_two_inserts_then_pop() {
-        let mut board = Board::<7, 6>::new();
+        let mut board = Board::new(7, 6);
         board.insert(0, Player::Player2).expect("insert failed");
         let col0 = board.get_col(0).unwrap();
         assert_eq!(
@@ -419,7 +462,7 @@ mod tests {
 
     #[test]
     fn test_empty_board_is_not_terminal() {
-        let board = Board::<7, 6>::new();
+        let board = Board::new(7, 6);
         assert_eq!(
             is_terminal_position(&board),
             TerminalPosition::IsNotTerminal
@@ -428,7 +471,7 @@ mod tests {
 
     #[test]
     fn test_is_terminal_horizontal_win() {
-        let mut board = Board::<7, 6>::new();
+        let mut board = Board::new(7, 6);
         board.insert(0, Player::Player1).expect("insert failed");
         board.insert(1, Player::Player1).expect("insert failed");
         board.insert(2, Player::Player1).expect("insert failed");
@@ -441,7 +484,7 @@ mod tests {
 
     #[test]
     fn test_is_terminal_vertical_win() {
-        let mut board = Board::<7, 6>::new();
+        let mut board = Board::new(7, 6);
         board.insert(0, Player::Player1).expect("insert failed");
         board.insert(0, Player::Player1).expect("insert failed");
         board.insert(0, Player::Player1).expect("insert failed");
@@ -454,7 +497,7 @@ mod tests {
 
     #[test]
     fn test_is_terminal_diag_win() {
-        let mut board = Board::<7, 6>::new();
+        let mut board = Board::new(7, 6);
         board.insert(0, Player::Player1).expect("insert failed");
         board.insert(1, Player::Player2).expect("insert failed");
         board.insert(1, Player::Player1).expect("insert failed");
@@ -484,7 +527,7 @@ mod tests {
             col in 0..7usize,
             row in 6..usize::MAX,
         ) {
-            let board = Board::<7, 6>::new();
+            let board = Board::new(7, 6);
             assert_eq!(
                 board.get(col, row),
                 Err(ConnectFourError::InvalidRow(row)),
@@ -497,7 +540,7 @@ mod tests {
             col in 7..usize::MAX,
             row in 0..6usize,
         ) {
-            let board = Board::<7, 6>::new();
+            let board = Board::new(7, 6);
             assert_eq!(
                 board.get(col, row),
                 Err(ConnectFourError::InvalidColumn(col)),
@@ -510,7 +553,7 @@ mod tests {
             col in 0..7usize,
             player in prop_oneof![Just(Player::Player1), Just(Player::Player2)],
         ) {
-            let mut board = Board::<7, 6>::new();
+            let mut board = Board::new(7, 6);
             board.insert(col, player).expect("insert failed");
             board.pop(col, player).expect("pop failed");
             assert!(all_cells_empty(&board));
@@ -521,7 +564,7 @@ mod tests {
             col in 0..7usize,
             player in prop_oneof![Just(Player::Player1), Just(Player::Player2)],
         ) {
-            let mut board = Board::<7, 6>::new();
+            let mut board = Board::new(7, 6);
             for _ in 0..6 {
                 board.insert(col, player).expect("insert failed");
             }
@@ -537,7 +580,7 @@ mod tests {
             col in 0..7usize,
             player in vec_of_player(),
         ) {
-            let mut board = Board::<7, 6>::new();
+            let mut board = Board::new(7, 6);
             for p in &player {
                 board.insert(col, *p).expect("insert failed");
             }

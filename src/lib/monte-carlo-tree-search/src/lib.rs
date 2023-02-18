@@ -23,6 +23,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use rand::seq::SliceRandom;
+use serde::{Deserialize, Serialize};
 use slotmap::new_key_type;
 
 pub type Int = i32;
@@ -30,9 +31,9 @@ pub type Float = f64;
 pub type Rng = rand_pcg::Pcg64;
 pub type HashMap<K, V> = rustc_hash::FxHashMap<K, V>;
 
-pub trait Action: Clone + Copy + PartialEq + Eq + Hash + Debug {}
+pub trait Action: Clone + Copy + PartialEq + Eq + Hash + Debug + Serialize {}
 
-pub trait State<_Action>: Clone + PartialEq + Eq + Hash + Debug
+pub trait State<_Action>: Clone + PartialEq + Eq + Hash + Debug + Serialize
 where
     _Action: Action,
 {
@@ -48,8 +49,8 @@ where
 
 new_key_type! { struct MctsNodeKey; }
 
-#[derive(Debug, Clone)]
-struct MctsNode<_State, _Action> {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct MctsNode<_State: State<_Action>, _Action: Action> {
     parent: Option<MctsNodeKey>,
     children: HashMap<_Action, MctsNodeKey>,
     visits: Int,
@@ -57,7 +58,7 @@ struct MctsNode<_State, _Action> {
     state: Option<_State>,
 }
 
-impl<_State, _Action> MctsNode<_State, _Action> {
+impl<_State: State<_Action>, _Action: Action> MctsNode<_State, _Action> {
     fn new(parent: Option<MctsNodeKey>, state: Option<_State>) -> Self {
         Self {
             parent,
@@ -69,8 +70,8 @@ impl<_State, _Action> MctsNode<_State, _Action> {
     }
 }
 
-#[derive(Debug, Clone)]
-struct MctsTree<_State, _Action> {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct MctsTree<_State: State<_Action>, _Action: Action> {
     nodes: slotmap::SlotMap<MctsNodeKey, MctsNode<_State, _Action>>,
     root: MctsNodeKey,
 }
@@ -237,7 +238,7 @@ pub enum IterationLimitKind {
 
 // Mcts is the main Monte Carlo Tree Search algorithm.
 // See section 5.4 Monte Carlo Tree Search page 162 and 163.
-pub struct Mcts<_State, _Action> {
+pub struct Mcts<_State: State<_Action>, _Action: Action> {
     tree: Rc<RefCell<MctsTree<_State, _Action>>>,
     iteration_limit: IterationLimitKind,
     exploration_constant: Float,
@@ -286,6 +287,13 @@ where
             max_depth_per_playout,
             rng: Rc::clone(&rng),
         }
+    }
+
+    pub fn serialize_tree(&self) -> String {
+        let tree = Rc::clone(&self.tree);
+        let tree = tree.borrow();
+        let output = serde_json::to_string_pretty(tree.deref()).unwrap();
+        output
     }
 
     pub fn run(&mut self) {
@@ -396,7 +404,6 @@ where
                     node_key = parent_node_key;
                 }
             }
-            node = tree.get_mut_node_from_nodekey(node_key);
         }
     }
 
@@ -425,7 +432,7 @@ mod tests {
 
     use super::*;
 
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
     enum MyAction {
         Up,
         Down,
@@ -448,7 +455,7 @@ mod tests {
 
     // Some dummy state that is associated with MCTS nodes. You would put e.g. "whose turn is it",
     // "what is the board", etc. here. You need to state to know what applying the action does.
-    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     struct MyState {
         pub data: u32,
     }
@@ -704,7 +711,7 @@ mod tests {
 
     #[test]
     fn test_mcts_iterations() {
-        let mut rng = Rc::new(RefCell::new(rand_pcg::Pcg64::seed_from_u64(42)));
+        let rng = Rc::new(RefCell::new(rand_pcg::Pcg64::seed_from_u64(42)));
         let playouts_per_simulation = 10;
         let max_depth_per_playout = 10;
         let mut mcts = MyMcts::new(
@@ -733,5 +740,8 @@ mod tests {
         let best_action = mcts.best_action();
         assert!(best_action.is_some());
         assert_eq!(best_action.unwrap(), MyAction::Up);
+
+        let serialized_tree = mcts.serialize_tree();
+        println!("serialized tree: {}", serialized_tree);
     }
 }
