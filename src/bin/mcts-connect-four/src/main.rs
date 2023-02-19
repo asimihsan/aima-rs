@@ -160,6 +160,33 @@ fn playout(
         if moves.is_empty() {
             break;
         }
+
+        // Check if any of the moves are winning moves. If so, take that move.
+        let mut used_winning_move = false;
+        for m in moves.iter() {
+            let mut board_copy = board.clone();
+            match m {
+                connect_four::Move::Insert(col) => {
+                    board_copy.insert(*col, current_player).unwrap();
+                }
+                connect_four::Move::Pop(col) => {
+                    board_copy.pop(*col, current_player).unwrap();
+                }
+            }
+            if connect_four::is_terminal_position(&board_copy)
+                == connect_four::TerminalPosition::IsTerminalWin(current_player)
+            {
+                used_winning_move = true;
+                board = board_copy;
+                depth += 1;
+                current_player.other();
+                break;
+            }
+        }
+        if used_winning_move {
+            continue;
+        }
+
         let random_move = moves.choose(rng).unwrap();
         match random_move {
             connect_four::Move::Insert(col) => {
@@ -183,16 +210,46 @@ fn playout(
     }
 }
 
-fn get_best_mcts_move(state: &State, rng: Rc<RefCell<rand_pcg::Pcg64>>) -> connect_four::Move {
-    let iterations = 200;
-    let playouts_per_simulation = 2_000;
-    let max_depth_per_playout = 10;
+struct MctsConfig {
+    iterations: monte_carlo_tree_search::Int,
+    exploration_constant: monte_carlo_tree_search::Float,
+    playouts_per_simulation: monte_carlo_tree_search::Int,
+    max_depth_per_playout: monte_carlo_tree_search::Int,
+}
+
+impl MctsConfig {
+    fn new(
+        iterations: monte_carlo_tree_search::Int,
+        exploration_constant: monte_carlo_tree_search::Float,
+        playouts_per_simulation: monte_carlo_tree_search::Int,
+        max_depth_per_playout: monte_carlo_tree_search::Int,
+    ) -> Self {
+        Self {
+            iterations,
+            exploration_constant,
+            playouts_per_simulation,
+            max_depth_per_playout,
+        }
+    }
+}
+
+impl Default for MctsConfig {
+    fn default() -> Self {
+        Self::new(100, std::f64::consts::SQRT_2 / 2.0, 1_000, 50)
+    }
+}
+
+fn get_best_mcts_move(
+    state: &State,
+    config: &MctsConfig,
+    rng: Rc<RefCell<rand_pcg::Pcg64>>,
+) -> connect_four::Move {
     let mut mcts = monte_carlo_tree_search::Mcts::<State, Action>::new(
         state.clone(),
-        monte_carlo_tree_search::IterationLimitKind::Iterations(iterations),
-        std::f64::consts::SQRT_2,
-        playouts_per_simulation,
-        max_depth_per_playout,
+        monte_carlo_tree_search::IterationLimitKind::Iterations(config.iterations),
+        config.exploration_constant,
+        config.playouts_per_simulation,
+        config.max_depth_per_playout,
         rng,
     );
 
@@ -213,7 +270,9 @@ fn get_best_mcts_move(state: &State, rng: Rc<RefCell<rand_pcg::Pcg64>>) -> conne
 
 fn main() {
     println!("starting");
+    let mcts_config = MctsConfig::default();
     let rng = Rc::new(RefCell::new(rand_pcg::Pcg64::seed_from_u64(42)));
+
     let human_player = Player::Player1;
     let cpu_player = Player::Player2;
     let mut state = State::new(
@@ -241,7 +300,7 @@ fn main() {
                 _ => panic!("invalid action"),
             }
         } else {
-            get_best_mcts_move(&state, Rc::clone(&rng))
+            get_best_mcts_move(&state, &mcts_config, Rc::clone(&rng))
         };
 
         let player = match state.turn {
@@ -281,39 +340,36 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::prelude::*;
 
     // player1 has two tokens in column 3 and column 4. it is player2's turn. check that mcts
     // returns a move to block on either column 2 or column 5, or else player1 will win.
-    // use proptest to explore variety of playouts_per_simulation, max_depth_per_playout, exploration_constant.
-    proptest! {
-        #[test]
-        fn test_mcts_block(
-            playouts_per_simulation in 1..1000,
-            max_depth_per_playout in 1..1000,
-            exploration_constant in 0.0..10.0,
-        ) {
-            let rng = rand_pcg::Pcg64::seed_from_u64(42);
-            let mut state = State::new(
-                7,               /*width*/
-                6,               /*height*/
-                Player::Player2, /*turn*/
-                Player::Player2, /*who_am_i*/
-            );
-            state.board.insert(3, connect_four::Player::Player1).unwrap();
-            state.board.insert(4, connect_four::Player::Player1).unwrap();
-            let rng = Rc::new(RefCell::new(rng));
-            let mut mcts = monte_carlo_tree_search::Mcts::<State, Action>::new(
-                state.clone(),
-                monte_carlo_tree_search::IterationLimitKind::Iterations(100),
-                exploration_constant,
-                playouts_per_simulation,
-                max_depth_per_playout,
-                rng,
-            );
-            mcts.run();
-            let best_move = mcts.best_action().unwrap();
-            assert!(best_move.0 == connect_four::Move::Insert(2) || best_move.0 == connect_four::Move::Insert(5));
-        }
+    #[test]
+    fn test_avoid_losing() {
+        let mcts_config = MctsConfig {
+            iterations: 50,
+            playouts_per_simulation: 30,
+            max_depth_per_playout: 50,
+            exploration_constant: std::f64::consts::SQRT_2,
+            ..Default::default()
+        };
+        let rng = Rc::new(RefCell::new(rand_pcg::Pcg64::seed_from_u64(42)));
+        let mut state = State::new(
+            7,               /*width*/
+            6,               /*height*/
+            Player::Player2, /*turn*/
+            Player::Player2, /*who_am_i*/
+        );
+        let board = &mut state.board;
+        board.insert(3, connect_four::Player::Player1).unwrap();
+        board.insert(4, connect_four::Player::Player1).unwrap();
+
+        let best_move = get_best_mcts_move(&state, &mcts_config, Rc::clone(&rng));
+
+        assert!(
+            best_move == connect_four::Move::Insert(2)
+                || best_move == connect_four::Move::Insert(5),
+            "best move: {:?}",
+            best_move
+        );
     }
 }

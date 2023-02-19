@@ -78,9 +78,10 @@ struct MctsTree<_State: State<_Action>, _Action: Action> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct MctsNodeForSerialization<_State: State<_Action>, _Action: Action> {
+    action: Option<_Action>,
     visits: Int,
     wins: Int,
-    children: HashMap<_Action, Box<MctsNodeForSerialization<_State, _Action>>>,
+    children: Vec<Box<MctsNodeForSerialization<_State, _Action>>>,
 
     #[serde(skip)]
     phantom_state: std::marker::PhantomData<_State>,
@@ -89,19 +90,20 @@ struct MctsNodeForSerialization<_State: State<_Action>, _Action: Action> {
 fn create_tree_for_serialization<_State: State<_Action>, _Action: Action>(
     tree: &MctsTree<_State, _Action>,
     node: MctsNodeKey,
+    action: Option<_Action>,
 ) -> MctsNodeForSerialization<_State, _Action> {
     let node = tree.get_node_from_nodekey(node);
+
+    let mut children: Vec<Box<MctsNodeForSerialization<_State, _Action>>> = node
+        .children
+        .iter()
+        .map(|(action, child)| Box::new(create_tree_for_serialization(tree, *child, Some(*action))))
+        .collect();
+    children.sort_unstable_by(|a, b| a.visits.cmp(&b.visits).reverse());
+
     MctsNodeForSerialization {
-        children: node
-            .children
-            .iter()
-            .map(|(action, child)| {
-                (
-                    *action,
-                    Box::new(create_tree_for_serialization(tree, *child)),
-                )
-            })
-            .collect(),
+        action,
+        children,
         visits: node.visits,
         wins: node.wins,
         phantom_state: std::marker::PhantomData,
@@ -261,7 +263,7 @@ pub enum SimulationResult {
 
 #[derive(Debug, Clone, Copy)]
 pub enum IterationLimitKind {
-    Iterations(usize),
+    Iterations(Int),
     TimeSeconds(Duration),
 }
 
@@ -322,7 +324,8 @@ where
         let tree = Rc::clone(&self.tree);
         let tree = tree.borrow();
         let tree = tree.deref();
-        let serialized_tree = create_tree_for_serialization(tree, tree.get_root_nodekey());
+        let serialized_tree =
+            create_tree_for_serialization(tree, tree.get_root_nodekey(), None /*action*/);
         let output = serde_json::to_string_pretty(&serialized_tree);
         output.unwrap()
     }
