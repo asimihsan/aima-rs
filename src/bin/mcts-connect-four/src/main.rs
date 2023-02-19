@@ -184,9 +184,9 @@ fn playout(
 }
 
 fn get_best_mcts_move(state: &State, rng: Rc<RefCell<rand_pcg::Pcg64>>) -> connect_four::Move {
-    let iterations = 100;
-    let playouts_per_simulation = 500;
-    let max_depth_per_playout = 20;
+    let iterations = 200;
+    let playouts_per_simulation = 2_000;
+    let max_depth_per_playout = 10;
     let mut mcts = monte_carlo_tree_search::Mcts::<State, Action>::new(
         state.clone(),
         monte_carlo_tree_search::IterationLimitKind::Iterations(iterations),
@@ -274,5 +274,45 @@ fn main() {
         connect_four::TerminalPosition::IsNotTerminal => {
             panic!("game should be over");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // player1 has two tokens in column 3 and column 4. it is player2's turn. check that mcts
+    // returns a move to block on either column 2 or column 5, or else player1 will win.
+    #[test]
+    fn test_playout() {
+        let rng = Rc::new(RefCell::new(rand_pcg::Pcg64::seed_from_u64(42)));
+        let mut state = State::new(
+            7,               /*width*/
+            6,               /*height*/
+            Player::Player2, /*who_am_i*/
+        );
+        let mut board = &mut state.board;
+        board.insert(3, connect_four::Player::Player1).unwrap();
+        board.insert(4, connect_four::Player::Player1).unwrap();
+
+        let mut mcts = monte_carlo_tree_search::Mcts::<State, Action>::new(
+            state,
+            monte_carlo_tree_search::IterationLimitKind::Iterations(10),
+            std::f64::consts::SQRT_2 / 2.0,
+            100,
+            10,
+            rng,
+        );
+        mcts.run();
+        let serialized_tree = mcts.serialize_tree();
+        std::fs::write("/tmp/mcts_tree.json", serialized_tree).unwrap();
+        let best_move = mcts.best_action().unwrap();
+
+        assert!(
+            best_move.0 == connect_four::Move::Insert(2)
+                || best_move.0 == connect_four::Move::Insert(5),
+            "best move: {:?}",
+            best_move
+        );
     }
 }

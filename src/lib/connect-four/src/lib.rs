@@ -19,12 +19,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ConnectFourError {
-    #[error("invalid column: {0}")]
-    InvalidColumn(usize),
-
-    #[error("invalid row: {0}")]
-    InvalidRow(usize),
-
     #[error("column is full: {0}")]
     ColumnFull(usize),
 
@@ -67,7 +61,7 @@ impl std::fmt::Display for Player {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Board {
-    pub cells: Vec<Vec<Cell>>,
+    pub cells: Vec<Cell>,
     width: usize,
     height: usize,
 }
@@ -75,41 +69,39 @@ pub struct Board {
 // print out cells, and row and column numbers which start at 0.
 impl std::fmt::Display for Board {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let width = self.cells[0].len();
-        let height = self.cells.len();
-        let mut s = String::with_capacity((width * 2 + 1) * (height + 1));
+        let mut s = String::with_capacity((self.width * 2 + 1) * (self.height + 1));
 
         // print column numbers. recall there will be row numbers on the left.
-        for col in 0..width {
+        for col in 0..self.width {
             if col == 0 {
                 s.push_str("  ");
             }
 
             s.push_str(&format!("{}", col));
-            if col == width - 1 {
+            if col == self.width - 1 {
                 s.push('\n');
             } else {
                 s.push(' ');
             }
         }
 
-        for row in 0..height {
+        for row in 0..self.height {
             // print row numbers
             s.push_str(&format!("{} ", row));
 
-            for col in 0..width {
-                let cell = self.cells[row][col];
+            for col in 0..self.width {
+                let cell = self.get(col, row);
                 let c = match cell {
                     Cell::Empty => '.',
                     Cell::Player(Player::Player1) => '1',
                     Cell::Player(Player::Player2) => '2',
                 };
                 s.push(c);
-                if col < width - 1 {
+                if col < self.width - 1 {
                     s.push(' ');
                 }
             }
-            if row < height - 1 {
+            if row < self.height - 1 {
                 s.push('\n');
             }
         }
@@ -119,14 +111,7 @@ impl std::fmt::Display for Board {
 
 impl Board {
     pub fn new(width: usize, height: usize) -> Self {
-        let mut cells = Vec::with_capacity(height);
-        for _ in 0..height {
-            let mut row = Vec::with_capacity(width);
-            for _ in 0..width {
-                row.push(Cell::Empty);
-            }
-            cells.push(row);
-        }
+        let cells = vec![Cell::Empty; width * height];
         Self {
             cells,
             width,
@@ -134,30 +119,21 @@ impl Board {
         }
     }
 
-    pub fn get(&self, col: usize, row: usize) -> Result<Cell, ConnectFourError> {
-        if col >= self.width {
-            return Err(ConnectFourError::InvalidColumn(col));
-        }
-        if row >= self.height {
-            return Err(ConnectFourError::InvalidRow(row));
-        }
-        Ok(self.cells[row][col])
+    pub fn get(&self, col: usize, row: usize) -> Cell {
+        self.cells[row * self.width + col]
     }
 
-    pub fn get_col(&self, col: usize) -> Result<Vec<Cell>, ConnectFourError> {
-        if col >= self.width {
-            return Err(ConnectFourError::InvalidColumn(col));
-        }
-        let result = (0..self.height).map(|row| self.cells[row][col]).collect();
-        Ok(result)
+    pub fn get_mut(&mut self, col: usize, row: usize) -> &mut Cell {
+        &mut self.cells[row * self.width + col]
+    }
+
+    pub fn get_col(&self, col: usize) -> Vec<Cell> {
+        (0..self.height).map(|row| self.get(col, row)).collect()
     }
 
     pub fn can_insert(&self, col: usize) -> Result<(), ConnectFourError> {
-        if col >= self.width {
-            return Err(ConnectFourError::InvalidColumn(col));
-        }
         for row in (0..self.height).rev() {
-            if self.cells[row][col] == Cell::Empty {
+            if self.get(col, row) == Cell::Empty {
                 return Ok(());
             }
         }
@@ -170,8 +146,9 @@ impl Board {
         match self.can_insert(col) {
             Ok(()) => {
                 for row in (0..self.height).rev() {
-                    if self.cells[row][col] == Cell::Empty {
-                        self.cells[row][col] = Cell::Player(player);
+                    let cell = self.get_mut(col, row);
+                    if *cell == Cell::Empty {
+                        *cell = Cell::Player(player);
                         return Ok(());
                     }
                 }
@@ -182,15 +159,15 @@ impl Board {
     }
 
     pub fn can_pop(&self, col: usize, player: Player) -> Result<(), ConnectFourError> {
-        if col >= self.width {
-            return Err(ConnectFourError::InvalidColumn(col));
-        }
-        let col_cells = self.get_col(col)?;
-        if col_cells[self.height - 1] == Cell::Empty {
-            return Err(ConnectFourError::ColumnEmpty(col));
-        }
-        if col_cells[self.height - 1] != Cell::Player(player) {
-            return Err(ConnectFourError::ColumnNotYours(col));
+        let col_cells = self.get_col(col);
+        let last_cell = col_cells[self.height - 1];
+        match last_cell {
+            Cell::Empty => return Err(ConnectFourError::ColumnEmpty(col)),
+            Cell::Player(p) => {
+                if p != player {
+                    return Err(ConnectFourError::ColumnNotYours(col));
+                }
+            }
         }
         Ok(())
     }
@@ -205,7 +182,9 @@ impl Board {
             Ok(()) => {
                 // for this column, copy the i+1 higher element down to i, in reverse order
                 for row in (0..self.height - 1).rev() {
-                    self.cells[row + 1][col] = self.cells[row][col];
+                    let cell1 = self.get(col, row);
+                    let cell2 = self.get_mut(col, row + 1);
+                    *cell2 = cell1;
                 }
                 Ok(())
             }
@@ -253,7 +232,7 @@ pub fn is_terminal_position(board: &Board) -> TerminalPosition {
     // check for a win
     for row in 0..board.height {
         for col in 0..board.width {
-            let cell1 = board.get(col, row).unwrap();
+            let cell1 = board.get(col, row);
             if cell1 == Cell::Empty {
                 continue;
             }
@@ -264,9 +243,9 @@ pub fn is_terminal_position(board: &Board) -> TerminalPosition {
 
             // check horizontal
             if col + 3 < board.width {
-                let cell2 = board.get(col + 1, row).unwrap();
-                let cell3 = board.get(col + 2, row).unwrap();
-                let cell4 = board.get(col + 3, row).unwrap();
+                let cell2 = board.get(col + 1, row);
+                let cell3 = board.get(col + 2, row);
+                let cell4 = board.get(col + 3, row);
                 if cell1 == cell2 && cell2 == cell3 && cell3 == cell4 {
                     return TerminalPosition::IsTerminalWin(player);
                 }
@@ -274,9 +253,9 @@ pub fn is_terminal_position(board: &Board) -> TerminalPosition {
 
             // check vertical
             if row + 3 < board.height {
-                let cell2 = board.get(col, row + 1).unwrap();
-                let cell3 = board.get(col, row + 2).unwrap();
-                let cell4 = board.get(col, row + 3).unwrap();
+                let cell2 = board.get(col, row + 1);
+                let cell3 = board.get(col, row + 2);
+                let cell4 = board.get(col, row + 3);
                 if cell1 == cell2 && cell2 == cell3 && cell3 == cell4 {
                     return TerminalPosition::IsTerminalWin(player);
                 }
@@ -284,9 +263,9 @@ pub fn is_terminal_position(board: &Board) -> TerminalPosition {
 
             // check diagonal down
             if col + 3 < board.width && row + 3 < board.height {
-                let cell2 = board.get(col + 1, row + 1).unwrap();
-                let cell3 = board.get(col + 2, row + 2).unwrap();
-                let cell4 = board.get(col + 3, row + 3).unwrap();
+                let cell2 = board.get(col + 1, row + 1);
+                let cell3 = board.get(col + 2, row + 2);
+                let cell4 = board.get(col + 3, row + 3);
                 if cell1 == cell2 && cell2 == cell3 && cell3 == cell4 {
                     return TerminalPosition::IsTerminalWin(player);
                 }
@@ -294,9 +273,9 @@ pub fn is_terminal_position(board: &Board) -> TerminalPosition {
 
             // check diagonal up
             if col + 3 < board.width && row >= 3 {
-                let cell2 = board.get(col + 1, row - 1).unwrap();
-                let cell3 = board.get(col + 2, row - 2).unwrap();
-                let cell4 = board.get(col + 3, row - 3).unwrap();
+                let cell2 = board.get(col + 1, row - 1);
+                let cell3 = board.get(col + 2, row - 2);
+                let cell4 = board.get(col + 3, row - 3);
                 if cell1 == cell2 && cell2 == cell3 && cell3 == cell4 {
                     return TerminalPosition::IsTerminalWin(player);
                 }
@@ -320,7 +299,7 @@ mod tests {
     fn all_cells_empty(board: &Board) -> bool {
         for row in 0..board.height {
             for col in 0..board.width {
-                if board.get(col, row).unwrap() != Cell::Empty {
+                if board.get(col, row) != Cell::Empty {
                     return false;
                 }
             }
@@ -333,9 +312,7 @@ mod tests {
         let board = Board::new(7, 6);
         for row in 0..6 {
             for col in 0..7 {
-                let get = board
-                    .get(col, row)
-                    .unwrap_or_else(|_| panic!("col: {}, row: {}", col, row));
+                let get = board.get(col, row);
                 assert_eq!(get, Cell::Empty, "col: {}, row: {}", col, row);
             }
         }
@@ -387,9 +364,7 @@ mod tests {
 
         for row in 0..6 {
             for col in 0..7 {
-                let get = board
-                    .get(col, row)
-                    .unwrap_or_else(|_| panic!("col: {}, row: {}", col, row));
+                let get = board.get(col, row);
                 if col == 0 && row == 5 {
                     assert_eq!(
                         get,
@@ -418,7 +393,7 @@ mod tests {
     fn test_board_two_inserts_then_pop() {
         let mut board = Board::new(7, 6);
         board.insert(0, Player::Player2).expect("insert failed");
-        let col0 = board.get_col(0).unwrap();
+        let col0 = board.get_col(0);
         assert_eq!(
             col0,
             [
@@ -432,7 +407,7 @@ mod tests {
         );
 
         board.insert(0, Player::Player1).expect("insert failed");
-        let col0 = board.get_col(0).unwrap();
+        let col0 = board.get_col(0);
         assert_eq!(
             col0,
             [
@@ -446,7 +421,7 @@ mod tests {
         );
 
         board.pop(0, Player::Player2).expect("pop failed");
-        let col0 = board.get_col(0).unwrap();
+        let col0 = board.get_col(0);
         assert_eq!(
             col0,
             [
@@ -523,32 +498,6 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_invalid_row_returns_error(
-            col in 0..7usize,
-            row in 6..usize::MAX,
-        ) {
-            let board = Board::new(7, 6);
-            assert_eq!(
-                board.get(col, row),
-                Err(ConnectFourError::InvalidRow(row)),
-                "should not be able to get row"
-            );
-        }
-
-        #[test]
-        fn test_invalid_col_returns_error(
-            col in 7..usize::MAX,
-            row in 0..6usize,
-        ) {
-            let board = Board::new(7, 6);
-            assert_eq!(
-                board.get(col, row),
-                Err(ConnectFourError::InvalidColumn(col)),
-                "should not be able to get col"
-            );
-        }
-
-        #[test]
         fn test_board_insert_then_pop_means_empty(
             col in 0..7usize,
             player in prop_oneof![Just(Player::Player1), Just(Player::Player2)],
@@ -585,11 +534,11 @@ mod tests {
                 board.insert(col, *p).expect("insert failed");
             }
 
-            let initial_col = board.get_col(col).expect("get_col failed");
+            let initial_col = board.get_col(col);
 
             let first_player = &player.first().unwrap();
             board.pop(col, **first_player).expect("pop failed");
-            let final_col = board.get_col(col).expect("get_col failed");
+            let final_col = board.get_col(col);
 
             let initial_col_non_empty = initial_col.iter().filter(|c| **c != Cell::Empty).collect::<Vec<_>>();
             let final_col_non_empty = final_col.iter().filter(|c| **c != Cell::Empty).collect::<Vec<_>>();

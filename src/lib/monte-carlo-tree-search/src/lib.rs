@@ -248,9 +248,6 @@ where
         let action_child_max_score: Option<&(&_Action, &MctsNodeKey, Float)> = all_scores
             .iter()
             .max_by(|(_, _, score1), (_, _, score2)| score1.partial_cmp(score2).unwrap());
-        if action_child_max_score.is_none() {
-            let _x = 1 + 2;
-        }
         node = *action_child_max_score.unwrap().1;
     }
     node
