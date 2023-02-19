@@ -139,6 +139,11 @@ impl monte_carlo_tree_search::State<Action> for State {
 
         next_state
     }
+
+    fn is_terminal(&self) -> bool {
+        connect_four::is_terminal_position(&self.board)
+            != connect_four::TerminalPosition::IsNotTerminal
+    }
 }
 
 fn playout(
