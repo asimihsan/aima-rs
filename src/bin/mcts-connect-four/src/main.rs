@@ -79,10 +79,10 @@ impl std::fmt::Display for State {
 }
 
 impl State {
-    fn new(width: usize, height: usize, who_am_i: Player) -> Self {
+    fn new(width: usize, height: usize, turn: Player, who_am_i: Player) -> Self {
         Self {
             board: connect_four::Board::new(width, height),
-            turn: Player::Player1,
+            turn,
             who_am_i,
         }
     }
@@ -217,9 +217,10 @@ fn main() {
     let human_player = Player::Player1;
     let cpu_player = Player::Player2;
     let mut state = State::new(
-        7,          /*width*/
-        6,          /*height*/
-        cpu_player, /*who_am_i*/
+        7,               /*width*/
+        6,               /*height*/
+        Player::Player1, /*turn*/
+        cpu_player,      /*who_am_i*/
     );
 
     while connect_four::is_terminal_position(&state.board)
@@ -280,39 +281,39 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     // player1 has two tokens in column 3 and column 4. it is player2's turn. check that mcts
     // returns a move to block on either column 2 or column 5, or else player1 will win.
-    #[test]
-    fn test_playout() {
-        let rng = Rc::new(RefCell::new(rand_pcg::Pcg64::seed_from_u64(42)));
-        let mut state = State::new(
-            7,               /*width*/
-            6,               /*height*/
-            Player::Player2, /*who_am_i*/
-        );
-        let mut board = &mut state.board;
-        board.insert(3, connect_four::Player::Player1).unwrap();
-        board.insert(4, connect_four::Player::Player1).unwrap();
-
-        let mut mcts = monte_carlo_tree_search::Mcts::<State, Action>::new(
-            state,
-            monte_carlo_tree_search::IterationLimitKind::Iterations(10),
-            std::f64::consts::SQRT_2 / 2.0,
-            100,
-            10,
-            rng,
-        );
-        mcts.run();
-        let serialized_tree = mcts.serialize_tree();
-        std::fs::write("/tmp/mcts_tree.json", serialized_tree).unwrap();
-        let best_move = mcts.best_action().unwrap();
-
-        assert!(
-            best_move.0 == connect_four::Move::Insert(2)
-                || best_move.0 == connect_four::Move::Insert(5),
-            "best move: {:?}",
-            best_move
-        );
+    // use proptest to explore variety of playouts_per_simulation, max_depth_per_playout, exploration_constant.
+    proptest! {
+        #[test]
+        fn test_mcts_block(
+            playouts_per_simulation in 1..1000,
+            max_depth_per_playout in 1..1000,
+            exploration_constant in 0.0..10.0,
+        ) {
+            let rng = rand_pcg::Pcg64::seed_from_u64(42);
+            let mut state = State::new(
+                7,               /*width*/
+                6,               /*height*/
+                Player::Player2, /*turn*/
+                Player::Player2, /*who_am_i*/
+            );
+            state.board.insert(3, connect_four::Player::Player1).unwrap();
+            state.board.insert(4, connect_four::Player::Player1).unwrap();
+            let rng = Rc::new(RefCell::new(rng));
+            let mut mcts = monte_carlo_tree_search::Mcts::<State, Action>::new(
+                state.clone(),
+                monte_carlo_tree_search::IterationLimitKind::Iterations(100),
+                exploration_constant,
+                playouts_per_simulation,
+                max_depth_per_playout,
+                rng,
+            );
+            mcts.run();
+            let best_move = mcts.best_action().unwrap();
+            assert!(best_move.0 == connect_four::Move::Insert(2) || best_move.0 == connect_four::Move::Insert(5));
+        }
     }
 }
