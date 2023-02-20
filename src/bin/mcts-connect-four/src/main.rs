@@ -188,7 +188,7 @@ fn playout(
             }
         }
         if used_winning_move {
-            continue;
+            break;
         }
 
         let random_move = moves.choose(rng).unwrap();
@@ -239,7 +239,7 @@ impl MctsConfig {
 
 impl Default for MctsConfig {
     fn default() -> Self {
-        Self::new(100, std::f64::consts::SQRT_2 / 2.0, 1_000, 50)
+        Self::new(300, std::f64::consts::SQRT_2, 500, 50)
     }
 }
 
@@ -277,8 +277,8 @@ fn main() {
     let mcts_config = MctsConfig::default();
     let rng = Rc::new(RefCell::new(rand_pcg::Pcg64::seed_from_u64(42)));
 
-    let human_player = Player::Player1;
-    let cpu_player = Player::Player2;
+    let human_player = Player::Player2;
+    let cpu_player = Player::Player1;
     let mut state = State::new(
         7,               /*width*/
         6,               /*height*/

@@ -214,6 +214,11 @@ impl Board {
                     let cell2 = self.get_mut(col, row + 1);
                     *cell2 = cell1;
                 }
+
+                // set the top cell to empty
+                let cell = self.get_mut(col, 0 /*row*/);
+                *cell = Cell::Empty;
+
                 Ok(())
             }
             Err(e) => Err(e),
@@ -527,6 +532,26 @@ mod tests {
             is_terminal_position(&board),
             TerminalPosition::IsTerminalWin(Player::Player1)
         );
+    }
+
+    // when a column is full, then when you pop the column must not be full.
+    #[test]
+    fn test_column_full_then_pop_means_not_full() {
+        let mut board = Board::new(7, 6);
+        for _ in 0..6 {
+            board.insert(0, Player::Player1).expect("insert failed");
+        }
+        let col0_before = board.get_col(0);
+        assert!(col0_before
+            .iter()
+            .all(|&cell| cell == Cell::Player(Player::Player1)));
+        assert_eq!(Err(ConnectFourError::ColumnFull(0)), board.can_insert(0));
+
+        board.pop(0, Player::Player1).expect("pop failed");
+
+        let col0_after = board.get_col(0);
+        assert_eq!(Cell::Empty, col0_after[0]);
+        assert_eq!(Ok(()), board.can_insert(0));
     }
 
     fn vec_of_player() -> impl Strategy<Value = Vec<Player>> {
