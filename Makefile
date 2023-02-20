@@ -27,6 +27,9 @@ build:
 test:
 	pyenv local aima-rs && cd src && cargo test --all
 
+clippy:
+	cd src && cargo clippy --all
+
 clean:
 	pyenv local aima-rs && cd src && cargo clean
 

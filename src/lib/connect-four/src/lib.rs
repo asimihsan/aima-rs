@@ -14,33 +14,53 @@
  * with this program. If not, see <https://www.gnu.org/licenses/>
  */
 
+#![warn(missing_docs)]
+
+//! Connect Four game logic.
+//!
+//! This is a library for the Connect Four game. It is intended to be used by
+//! an algorithm to simulate or play the game.
+
 use serde::{Deserialize, Serialize};
 
+/// Connect Four error.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ConnectFourError {
+    /// Column is full.
     #[error("column is full: {0}")]
     ColumnFull(usize),
 
+    /// Column is empty.
     #[error("column is empty: {0}")]
     ColumnEmpty(usize),
 
+    /// Column is not yours. You can only pop from your own columns.
     #[error("column is not yours: {0}")]
     ColumnNotYours(usize),
 }
 
+/// Connect Four cell. Part of the board.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Cell {
+    /// Empty cell.
     Empty,
+
+    /// Cell for a piece belonging to a player.
     Player(Player),
 }
 
+/// Connect Four player.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Player {
+    /// Player 1.
     Player1,
+
+    /// Player 2.
     Player2,
 }
 
 impl Player {
+    /// Get the other player.
     pub fn other(&mut self) {
         match self {
             Player::Player1 => *self = Player::Player2,
@@ -58,9 +78,12 @@ impl std::fmt::Display for Player {
     }
 }
 
+/// Connect Four board. This only contains the cells, and not the players or the turn.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Board {
+    /// Cells, either empty or containing a player.
     pub cells: Vec<Cell>,
+
     width: usize,
     height: usize,
 }
@@ -109,6 +132,7 @@ impl std::fmt::Display for Board {
 }
 
 impl Board {
+    /// Create a new board.
     pub fn new(width: usize, height: usize) -> Self {
         let cells = vec![Cell::Empty; width * height];
         Self {
@@ -118,18 +142,22 @@ impl Board {
         }
     }
 
+    /// Get a cell.
     pub fn get(&self, col: usize, row: usize) -> Cell {
         self.cells[row * self.width + col]
     }
 
+    /// Get a mutable cell.
     pub fn get_mut(&mut self, col: usize, row: usize) -> &mut Cell {
         &mut self.cells[row * self.width + col]
     }
 
+    /// Get a column of cells.
     pub fn get_col(&self, col: usize) -> Vec<Cell> {
         (0..self.height).map(|row| self.get(col, row)).collect()
     }
 
+    /// Check if you can insert a piece into a column.
     pub fn can_insert(&self, col: usize) -> Result<(), ConnectFourError> {
         for row in (0..self.height).rev() {
             if self.get(col, row) == Cell::Empty {
@@ -139,8 +167,8 @@ impl Board {
         Err(ConnectFourError::ColumnFull(col))
     }
 
-    // insert will insert a piece into the board. It will return None if the column is full.
-    // This inserts into the first empty cell in the column, going from the bottom up.
+    /// insert will insert a piece into the board. It will return None if the column is full.
+    /// This inserts into the first empty cell in the column, going from the bottom up.
     pub fn insert(&mut self, col: usize, player: Player) -> Result<(), ConnectFourError> {
         match self.can_insert(col) {
             Ok(()) => {
@@ -157,6 +185,7 @@ impl Board {
         }
     }
 
+    /// Check if you can pop a piece from a column.
     pub fn can_pop(&self, col: usize, player: Player) -> Result<(), ConnectFourError> {
         let col_cells = self.get_col(col);
         let last_cell = col_cells[self.height - 1];
@@ -171,11 +200,11 @@ impl Board {
         Ok(())
     }
 
-    // pop will remove a piece from the board. It will return None if the column is empty.
-    // This removes the first non-empty cell in the column, going from the bottom up.
-    // This will shift down all the pieces above it. This is used for the popout variant.
-    //
-    // You can only pop from a column if the bottom piece is yours.
+    /// pop will remove a piece from the board. It will return None if the column is empty.
+    /// This removes the first non-empty cell in the column, going from the bottom up.
+    /// This will shift down all the pieces above it. This is used for the popout variant.
+    ///
+    /// You can only pop from a column if the bottom piece is yours.
     pub fn pop(&mut self, col: usize, player: Player) -> Result<(), ConnectFourError> {
         match self.can_pop(col, player) {
             Ok(()) => {
@@ -192,9 +221,13 @@ impl Board {
     }
 }
 
+/// A move is either inserting a piece into a column, or popping a piece from a column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Move {
+    /// Insert a piece into the top of a column.
     Insert(usize),
+
+    /// Pop a piece from the bottom of a column.
     Pop(usize),
 }
 
@@ -207,6 +240,7 @@ impl std::fmt::Display for Move {
     }
 }
 
+/// Get all the legal moves for a player.
 pub fn get_legal_moves(board: &Board, player: Player) -> Vec<Move> {
     let mut moves = Vec::new();
     for col in 0..board.width {
@@ -220,13 +254,20 @@ pub fn get_legal_moves(board: &Board, player: Player) -> Vec<Move> {
     moves
 }
 
+/// Whether a position is terminal, and if so, who won.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminalPosition {
+    /// The game is terminal, and some Player has won.
     IsTerminalWin(Player),
+
+    /// The game is terminal, and it is a draw.
     IsTerminalDraw,
+
+    /// The game is not terminal.
     IsNotTerminal,
 }
 
+/// Check if a position is terminal.
 pub fn is_terminal_position(board: &Board) -> TerminalPosition {
     // check for a win
     for row in 0..board.height {

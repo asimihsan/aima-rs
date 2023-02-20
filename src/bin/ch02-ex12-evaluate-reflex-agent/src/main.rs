@@ -14,6 +14,10 @@
  * with this program. If not, see <https://www.gnu.org/licenses/>
  */
 
+#![warn(missing_docs)]
+
+//! Chapter 2, Exercise 12, Evaluate Reflex Agent.
+
 // Exercise 12:
 //
 // Implement a simple reflex agent for the vacuum environment in Exercise 2.10. Run the environment

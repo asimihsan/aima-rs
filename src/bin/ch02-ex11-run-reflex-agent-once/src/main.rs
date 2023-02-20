@@ -14,6 +14,12 @@
  * with this program. If not, see <https://www.gnu.org/licenses/>
  */
 
+#![warn(missing_docs)]
+
+//! Run the reflex agent once.
+//!
+//! For more information see chapter 2 "Intelligent Agents" exercises 11 and 12.
+
 use vacuum_cleaner::vacuum_world::{ReflexVacuumAgent, VacuumWorldEnvironment};
 use vacuum_cleaner::Simulation;
 
