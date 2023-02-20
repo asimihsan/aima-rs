@@ -30,9 +30,27 @@ research. The goal of this project is not to provide state-of-the-art
 implementations of the algorithms and concepts, but rather to provide a starting
 point for further development.
 
+### Why Rust?
+
+There are existing implementations of the algorithms and concepts from the
+textbook in other languages such as Python and Java. However, Rust provides
+developers with many features to help them develop AI applications, such as
+being fast and allowing safer concurrency than other languages. Rust also allows
+for stricter control of memory layout and usage, making it suitable for scaling
+up algorithms on single machines for larger problems. Additionally, Rust code
+can be easily compiled to WASM, making it more accessible to developers and
+students alike via browser-based applications.
+
 ## Contribution guidelines
 
 See the [CONTRIBUTING](CONTRIBUTING.md) file for details.
+
+## Prior art
+
+This project is inspired by the following projects:
+
+- [aima-python](https://github.com/aimacode/aima-python)
+- [aima-java](https://github.com/aimacode/aima-java)
 
 ## License
 

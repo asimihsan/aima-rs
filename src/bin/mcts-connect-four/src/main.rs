@@ -21,6 +21,7 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use serde::Serialize;
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -219,6 +220,7 @@ struct MctsConfig {
     exploration_constant: monte_carlo_tree_search::Float,
     playouts_per_simulation: monte_carlo_tree_search::Int,
     max_depth_per_playout: monte_carlo_tree_search::Int,
+    tree_dump_dir: Option<PathBuf>,
 }
 
 impl MctsConfig {
@@ -227,19 +229,27 @@ impl MctsConfig {
         exploration_constant: monte_carlo_tree_search::Float,
         playouts_per_simulation: monte_carlo_tree_search::Int,
         max_depth_per_playout: monte_carlo_tree_search::Int,
+        tree_dump_dir: Option<PathBuf>,
     ) -> Self {
         Self {
             iterations,
             exploration_constant,
             playouts_per_simulation,
             max_depth_per_playout,
+            tree_dump_dir,
         }
     }
 }
 
 impl Default for MctsConfig {
     fn default() -> Self {
-        Self::new(300, std::f64::consts::SQRT_2, 500, 50)
+        Self::new(
+            300,
+            std::f64::consts::SQRT_2,
+            500,
+            50,
+            Some(PathBuf::from("/tmp/tree-dump-dir")),
+        )
     }
 }
 
@@ -255,6 +265,7 @@ fn get_best_mcts_move(
         config.playouts_per_simulation,
         config.max_depth_per_playout,
         rng,
+        config.tree_dump_dir.clone(),
     );
 
     let start = std::time::Instant::now();
@@ -265,16 +276,17 @@ fn get_best_mcts_move(
     println!("best move: {:?}", best_move);
     println!("elapsed: {:?}", elapsed);
 
-    // get string serialization of tree and write to /tmp/mcts_tree.json
-    let serialized_tree = mcts.serialize_tree();
-    std::fs::write("/tmp/mcts_tree.json", serialized_tree).unwrap();
-
     best_move.0
 }
 
 fn main() {
     println!("starting");
     let mcts_config = MctsConfig::default();
+
+    // ensure config.tree_dump_dir exists and is empty directory
+    let _ = std::fs::remove_dir_all(&mcts_config.tree_dump_dir.clone().unwrap());
+    std::fs::create_dir(&mcts_config.tree_dump_dir.clone().unwrap()).unwrap();
+
     let rng = Rc::new(RefCell::new(rand_pcg::Pcg64::seed_from_u64(42)));
 
     let human_player = Player::Player2;
@@ -354,8 +366,10 @@ mod tests {
             playouts_per_simulation: 30,
             max_depth_per_playout: 50,
             exploration_constant: std::f64::consts::SQRT_2,
+            tree_dump_dir: None,
             ..Default::default()
         };
+
         let rng = Rc::new(RefCell::new(rand_pcg::Pcg64::seed_from_u64(42)));
         let mut state = State::new(
             7,               /*width*/

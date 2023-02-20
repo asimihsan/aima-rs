@@ -16,8 +16,11 @@
 
 use std::cell::RefCell;
 use std::fmt::{Debug, Display};
+use std::fs::File;
 use std::hash::Hash;
+use std::io::{BufWriter, Write};
 use std::ops::{Deref, DerefMut};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -292,6 +295,10 @@ pub struct Mcts<_State: State<_Action>, _Action: Action> {
     playouts_per_simulation: Int,
     max_depth_per_playout: Int,
     rng: Rc<RefCell<Rng>>,
+
+    // Directory inside which to put serialized trees.
+    // If None, don't serialize trees.
+    tree_dump_dir: Option<PathBuf>,
 }
 
 impl<_State, _Action> Mcts<_State, _Action>
@@ -306,6 +313,7 @@ where
         playouts_per_simulation: Int,
         max_depth_per_playout: Int,
         rng: Rc<RefCell<Rng>>,
+        tree_dump_dir: Option<PathBuf>,
     ) -> Self {
         Mcts::new_from_tree(
             MctsTree::new(root_state),
@@ -314,6 +322,7 @@ where
             playouts_per_simulation,
             max_depth_per_playout,
             rng,
+            tree_dump_dir,
         )
     }
 
@@ -325,6 +334,7 @@ where
         playouts_per_simulation: Int,
         max_depth_per_playout: Int,
         rng: Rc<RefCell<Rng>>,
+        tree_dump_dir: Option<PathBuf>,
     ) -> Self {
         Self {
             tree: Rc::new(RefCell::new(tree)),
@@ -333,10 +343,11 @@ where
             playouts_per_simulation,
             max_depth_per_playout,
             rng: Rc::clone(&rng),
+            tree_dump_dir,
         }
     }
 
-    pub fn serialize_tree(&self) -> String {
+    fn serialize_tree(&self) -> String {
         let tree = Rc::clone(&self.tree);
         let tree = tree.borrow();
         let tree = tree.deref();
@@ -346,23 +357,37 @@ where
         output.unwrap()
     }
 
+    fn maybe_dump_tree(&self, iteration: Int) {
+        if let Some(tree_dump_dir) = &self.tree_dump_dir {
+            let tree = self.serialize_tree();
+
+            let filename = format!("tree-{:03}.json", iteration);
+            let path = tree_dump_dir.join(filename);
+            let file = File::create(path).unwrap();
+            let mut file = BufWriter::new(file);
+            file.write_all(tree.as_bytes()).unwrap();
+        }
+    }
+
     pub fn run(&mut self) {
         match self.iteration_limit {
             IterationLimitKind::Iterations(iterations) => {
-                for _ in 0..iterations {
-                    self.iteration();
+                for i in 0..iterations {
+                    self.iteration(i);
                 }
             }
             IterationLimitKind::TimeSeconds(time) => {
                 let start = Instant::now();
+                let mut i = 0;
                 while start.elapsed() < time {
-                    self.iteration();
+                    self.iteration(i);
+                    i += 1;
                 }
             }
         }
     }
 
-    fn iteration(&mut self) {
+    fn iteration(&mut self, iteration: Int) {
         let (node_key, state) = self.select();
 
         let (node_key, state) = self.expand(node_key, state);
@@ -378,6 +403,8 @@ where
         };
 
         self.back_propagate(node_key, result);
+
+        self.maybe_dump_tree(iteration);
     }
 
     fn select(&self) -> (MctsNodeKey, _State) {
@@ -400,6 +427,12 @@ where
         // If the node is terminal, we don't need to expand it because the game is over.
         // However, we still return it because we want to backpropagate the result.
         if state.is_terminal() {
+            return (node_key, state);
+        }
+
+        // The node is not terminal. If the node has no visits, we don't need to expand it and
+        // instead return it because we want to simulate it. If we don't we will skip it!
+        if self.tree.borrow().get_node_from_nodekey(node_key).visits == 0 {
             return (node_key, state);
         }
 
@@ -582,6 +615,7 @@ mod tests {
             100,
             10,
             rng,
+            None,
         )
     }
 
@@ -733,6 +767,7 @@ mod tests {
             playouts_per_simulation,
             max_depth_per_playout,
             rng,
+            None,
         );
         mcts.run();
 
