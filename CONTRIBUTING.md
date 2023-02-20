@@ -11,6 +11,11 @@ in many sections the textbook is merely a starting point for further research.
 The goal of this project is not to provide state-of-the-art implementations of
 the algorithms and concepts.
 
+Libraries in this repository are intended for re-use. The goal is to provide a
+library of components that can be used to build more complex systems. That said,
+examples and pedagogical code are also welcome in the `bin` and `doc`
+directories.
+
 ## Contribution guidelines
 
 1. You agree to license your contributions under the same [LICENSE](LICENSE) as

@@ -17,10 +17,10 @@ reasoning, and machine learning. The code is intended to be well-documented and
 easy to understand, making it suitable for both students and professionals in
 the field of Artificial Intelligence.
 
-However, in many sections the textbook is merely a starting point for further
+However, in many sections, the textbook is merely a starting point for further
 research. The goal of this project is not to provide state-of-the-art
-implementations of the algorithms and concepts, but rather to provide a
-starting point for further development.
+implementations of the algorithms and concepts, but rather to provide a starting
+point for further development.
 
 ## Contribution guidelines
 
