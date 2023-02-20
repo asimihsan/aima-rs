@@ -1,6 +1,14 @@
-# aima-rs
+<h1 align="center">
+  aima-rs
+</h1>
 
-## Introduction
+<h4 align="center">Rust implementation of AI concepts from "Artificial Intelligence: A Modern Approach" by Stuart Russell and Peter Norvig.</h4>
+
+<p align="center">
+  <a href="#goals">Goals</a> •
+  <a href="#contribution-guidelines">Contribution guidelines</a> •
+  <a href="#license">License</a> •
+</p>
 
 This project aims to provide Rust code implementations for the algorithms and
 concepts presented in the textbook "Artificial Intelligence: A Modern Approach"
