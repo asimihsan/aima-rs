@@ -13,14 +13,20 @@ the algorithms and concepts.
 
 ## Contribution guidelines
 
-1. Code must reference "Artificial Intelligence: A Modern Approach" by Stuart
+1. You agree to license your contributions under the same [LICENSE](LICENSE) as
+the rest of the project. This is a requirement for all contributions. If you are
+not comfortable with this, please do not contribute.
+2. You agree to the [code of conduct](CODE_OF_CONDUCT.md). This is a requirement
+for all contributions and participation in the project. If you are not
+comfortable with this, please do not contribute or participate.
+3. Code must reference "Artificial Intelligence: A Modern Approach" by Stuart
 Russell and Peter Norvig, 2nd or 3rd edition. The code should be a direct
 implementation of the algorithms and concepts presented in the textbook.
-2. Code must be well-documented. Each function should have a doc comment
+4. Code must be well-documented. Each function should have a doc comment
 describing the purpose of the function and the parameters and return values.
-3. Code must be well-tested. Each function should have unit tests that cover the
+5. Code must be well-tested. Each function should have unit tests that cover the
 expected behavior of the function.
-4. All major components and algorithms need at least one motivating end-to-end
+6. All major components and algorithms need at least one motivating end-to-end
 example. This example should be included in the `bin` directory and should be
 runnable with `cargo run --bin <example_name>`. The goal is to provide a working
 example that demonstrates the use of the component.
