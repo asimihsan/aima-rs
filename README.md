@@ -6,8 +6,9 @@
 
 <p align="center">
   <a href="#goals">Goals</a> •
+  <a href="#algorithms-and-concepts-implements">Algorithms and concepts implemented</a> •
   <a href="#contribution-guidelines">Contribution guidelines</a> •
-  <a href="#license">License</a> •
+  <a href="#license">License</a>
 </p>
 
 This project aims to provide Rust code implementations for the algorithms and
@@ -16,6 +17,33 @@ by Stuart Russell and Peter Norvig. The purpose of this project is to make the
 algorithms and concepts from the textbook more accessible to developers by
 providing working code that can be used as a learning tool or as a starting
 point for further development.
+
+## Algorithms and concepts implemented
+
+### Chapter 2: Intelligent Agents
+
+### Chapter 3: Solving Problems by Searching
+
+### Chapter 4: Search in Complex Environments
+
+### Chapter 5: Adversarial Search and Games
+
+#### 5.4 - Monte Carlo Tree Search
+
+Figure 5.11 page 163 `Monte-Carlo-Search` is implemented in the
+[`lib/monte-carlo-tree-search`
+crate](https://github.com/asimihsan/aima-rs/blob/main/src/lib/monte-carlo-tree-search/src/lib.rs).
+
+An end-to-end example that plays Connect Four with a popout variant is
+implemented using MCTS in
+[`bin/mcts-connect-four`](https://github.com/asimihsan/aima-rs/blob/main/src/bin/mcts-connect-four/src/main.rs)
+and can be run with `cargo run --profile production --bin mcts-connect-four`.
+
+### Chapter 6: Constraint Satisfaction Problems
+
+### Chapter XYZ
+
+TODO: Add more chapters
 
 ## Goals
 

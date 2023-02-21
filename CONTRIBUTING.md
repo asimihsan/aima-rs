@@ -25,7 +25,7 @@ not comfortable with this, please do not contribute.
 for all contributions and participation in the project. If you are not
 comfortable with this, please do not contribute or participate.
 3. Code must reference "Artificial Intelligence: A Modern Approach" by Stuart
-Russell and Peter Norvig, 2nd or 3rd edition. The code should be a direct
+Russell and Peter Norvig, 4th edition. The code should be a direct
 implementation of the algorithms and concepts presented in the textbook.
 4. Code must be well-documented. Each function should have a doc comment
 describing the purpose of the function and the parameters and return values.

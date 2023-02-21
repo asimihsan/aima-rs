@@ -49,9 +49,9 @@ enum Player {
     Player2,
 }
 
-impl Into<connect_four::Player> for Player {
-    fn into(self) -> connect_four::Player {
-        match self {
+impl From<Player> for connect_four::Player {
+    fn from(player: Player) -> Self {
+        match player {
             Player::Player1 => connect_four::Player::Player1,
             Player::Player2 => connect_four::Player::Player2,
         }

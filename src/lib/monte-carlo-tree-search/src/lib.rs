@@ -432,7 +432,9 @@ where
 
         // The node is not terminal. If the node has no visits, we don't need to expand it and
         // instead return it because we want to simulate it. If we don't we will skip it!
-        if self.tree.borrow().get_node_from_nodekey(node_key).visits == 0 {
+        if node_key != self.tree.borrow().root
+            && self.tree.borrow().get_node_from_nodekey(node_key).visits == 0
+        {
             return (node_key, state);
         }
 
