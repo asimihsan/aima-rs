@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -5,7 +6,7 @@ pub struct GameWrapper {
     state: mcts_connect_four::State,
 }
 
-#[wasm_bindgen]
+#[derive(Serialize, Deserialize)]
 pub enum Player {
     Player1,
     Player2,
@@ -31,10 +32,11 @@ impl GameWrapper {
         Self { state }
     }
 
-    pub fn turn(&self) -> Player {
-        match self.state.turn {
+    pub fn turn(&self) -> JsValue {
+        let player = match self.state.turn {
             mcts_connect_four::Player::Player1 => Player::Player1,
             mcts_connect_four::Player::Player2 => Player::Player2,
-        }
+        };
+        serde_wasm_bindgen::to_value(&player).unwrap()
     }
 }

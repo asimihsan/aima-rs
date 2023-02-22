@@ -31,5 +31,6 @@ import { GameWrapper } from './pkg_mcts_connect_four';
         console.log('loaded');
         const game: GameWrapper = new mctsConnectFour.GameWrapper(7, 6, false);
         console.log(game);
+        console.log(game.turn());
     });
 })();
