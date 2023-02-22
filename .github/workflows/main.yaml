@@ -1,0 +1,32 @@
+name: "Test Suite"
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-rust:
+    name: test-rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - run: cargo test
+        working-directory: ./src
+
+  build-test-web:
+    name: build-test-web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: wasm32-unknown-unknown
+      - run: cargo build --release --target wasm32-unknown-unknown
+        working-directory: ./src
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '18'
+      - run: npm install
+        working-directory: ./src/web
+      - run: npm run build
+        working-directory: ./src/web
