@@ -3,12 +3,14 @@
 members = [
     "bin/ch02-ex11-run-reflex-agent-once",
     "bin/ch02-ex12-evaluate-reflex-agent",
-    "bin/mcts-connect-four",
-    "bin/neural-networks-test",
-    "lib/connect-four",
-    "lib/monte-carlo-tree-search",
-    "lib/neural-networks",
-    "lib/vacuum-cleaner",
+    "bin/mcts-connect-four-bin",
+#    "bin/neural-networks-test",
+    "lib/game/connect-four-logic",
+    "lib/end-to-end/mcts-connect-four",
+    "lib/book/monte-carlo-tree-search",
+#    "lib/neural-networks",
+    "lib/book/vacuum-cleaner",
+    "wasm/wasm-bindgen-mcts-connect-four"
 ]
 
 [profile.release]

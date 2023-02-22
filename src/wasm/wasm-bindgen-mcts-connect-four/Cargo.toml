@@ -1,0 +1,19 @@
+[package]
+name = "wasm-bindgen-mcts-connect-four"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+console_error_panic_hook = "0.1.7"
+getrandom = { version = "0.2.8", features = ["js"] }
+serde = { version = "1.0.152", features = ["derive"] }
+serde-wasm-bindgen = "0.4.5"
+serde_derive = "1.0.152"
+wasm-bindgen = "0.2.84"
+
+connect-four-logic = { path = "../../lib/game/connect-four-logic" }
+mcts-connect-four = { path = "../../lib/end-to-end/mcts-connect-four" }

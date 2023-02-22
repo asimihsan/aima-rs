@@ -24,6 +24,15 @@ run-mcts-connect-four:
 build:
 	cd src && ./build-mac.sh
 
+build-wasm:
+	cd src && cargo build --all --target wasm32-unknown-unknown --release
+
+build-web: build-wasm
+	cd src/web && npm run build
+
+serve-web: build-wasm
+	cd src/web && npm run start
+
 test:
 	pyenv local aima-rs && cd src && cargo test --all
 

@@ -7,4 +7,4 @@ license = "AGPL-3.0-only"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-vacuum-cleaner = { path = "../../lib/vacuum-cleaner" }
+vacuum-cleaner = { path = "../../lib/book/vacuum-cleaner" }
