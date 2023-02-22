@@ -173,10 +173,12 @@ where
         &mut self.nodes[node]
     }
 
+    #[allow(dead_code)]
     fn get_root(&self) -> &MctsNode<_State, _Action> {
         &self.nodes[self.root]
     }
 
+    #[allow(dead_code)]
     fn get_mut_root(&mut self) -> &mut MctsNode<_State, _Action> {
         &mut self.nodes[self.root]
     }
@@ -609,6 +611,7 @@ mod tests {
     type MyMcts = Mcts<MyState, MyAction>;
     type MyMctsTree = MctsTree<MyState, MyAction>;
 
+    #[allow(dead_code)]
     fn new_my_mcts(rng: Rc<RefCell<Rng>>) -> MyMcts {
         Mcts::new(
             MyState { data: 0 },
