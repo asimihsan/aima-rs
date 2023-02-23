@@ -16,8 +16,9 @@
     "@popperjs/core": "^2.11.6",
     "bootstrap": "^5.2.3",
     "document-promises": "^4.0.0",
-    "postcss-preset-env": "^8.0.1",
-    "puppeteer": "^19.7.2"
+    "phaser": "^3.55.2",
+    "phaser-ui-tools": "^2.0.0-beta",
+    "postcss-preset-env": "^8.0.1"
   },
   "devDependencies": {
     "@babel/core": "^7.21.0",
@@ -46,6 +47,7 @@
     "postcss": "^8.4.21",
     "postcss-loader": "^7.0.2",
     "precss": "^4.0.0",
+    "puppeteer": "^19.7.2",
     "sass-loader": "^13.2.0",
     "style-loader": "^3.3.1",
     "tsutils": "^3.21.0",

@@ -17,10 +17,10 @@
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './index.css';
 import './footer.css';
+
 import { contentLoaded, loaded } from 'document-promises';
 
-import importPromiseMctsConnectFour from './mcts_connect_four';
-import { GameWrapper } from './pkg_mcts_connect_four';
+import importPromiseMctsConnectFour, { MctsConnectFourGame } from './mcts_connect_four';
 
 (() => {
     let mctsConnectFour;
@@ -28,9 +28,7 @@ import { GameWrapper } from './pkg_mcts_connect_four';
         mctsConnectFour = await importPromiseMctsConnectFour();
     });
     Promise.all([loaded, contentLoadedPromise]).then(() => {
-        console.log('loaded');
-        const game: GameWrapper = new mctsConnectFour.GameWrapper(7, 6, false);
-        console.log(game);
-        console.log(game.turn());
+        const phaserGame = new MctsConnectFourGame(mctsConnectFour);
+        console.log([phaserGame]);
     });
 })();
