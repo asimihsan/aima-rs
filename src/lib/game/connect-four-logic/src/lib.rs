@@ -84,8 +84,11 @@ pub struct Board {
     /// Cells, either empty or containing a player.
     pub cells: Vec<Cell>,
 
-    width: usize,
-    height: usize,
+    /// Width of the board.
+    pub width: usize,
+
+    /// Height of the board.
+    pub height: usize,
 }
 
 // print out cells, and row and column numbers which start at 0.
@@ -338,8 +341,9 @@ pub fn is_terminal_position(board: &Board) -> TerminalPosition {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use proptest::prelude::*;
+
+    use super::*;
 
     fn all_cells_empty(board: &Board) -> bool {
         for row in 0..board.height {

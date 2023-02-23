@@ -1,9 +1,26 @@
-use rand::prelude::SliceRandom;
-use serde::ser::Serialize;
-use serde_derive::{Deserialize, Serialize};
+/*
+ * Copyright (C) 2023 Asim Ihsan
+ * SPDX-License-Identifier: AGPL-3.0-only
+ *
+ * This program is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU Affero General Public License as published by the Free
+ * Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY
+ * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+ * PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along
+ * with this program. If not, see <https://www.gnu.org/licenses/>
+ */
+
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
+
+use rand::prelude::SliceRandom;
+use serde::ser::Serialize;
+use serde_derive::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct Action(connect_four_logic::Move);
@@ -255,13 +272,9 @@ pub fn get_best_mcts_move(
         config.tree_dump_dir.clone(),
     );
 
-    let start = std::time::Instant::now();
     mcts.run();
-    let elapsed = start.elapsed();
     let best_move = mcts.best_action().unwrap();
-
     println!("best move: {:?}", best_move);
-    println!("elapsed: {:?}", elapsed);
 
     best_move.0
 }

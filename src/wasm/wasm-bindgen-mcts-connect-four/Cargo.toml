@@ -10,7 +10,10 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 console_error_panic_hook = "0.1.7"
 getrandom = { version = "0.2.8", features = ["js"] }
+rand_core = "0.6.4"
+rand_pcg = "0.3.1"
 serde = { version = "1.0.152", features = ["derive"] }
+serde_json = "1.0.93"
 serde-wasm-bindgen = "0.4.5"
 serde_derive = "1.0.152"
 wasm-bindgen = "0.2.84"
