@@ -41,9 +41,23 @@ and can be run with `cargo run --profile production --bin mcts-connect-four`.
 
 ### Chapter 6: Constraint Satisfaction Problems
 
-### Chapter XYZ
+### TODO
 
-TODO: Add more chapters
+- [ ] Add more chapters
+
+#### MCTS Connect Four web example
+
+- [ ] Calculate turn in web worker
+- [ ] Animate when turn is being calculated
+- [ ] After turn is complete, update UI with token
+- [ ] After turn is complete, show MCTS tree with step button to step through iterations. Draw tree with SVG outside
+  the game; let Phaser only deal with game.
+- [ ] After turn is complete show what CPU played
+- [ ] Allow human input; click either on top-most row to insert, or bottom-most row to pop
+- [ ] Allow game reset using button
+- [ ] When game is over say who won
+- [ ] Unit tests for game using Puppeteer
+- [ ] Write preamble
 
 ## Goals
 
