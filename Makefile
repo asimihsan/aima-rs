@@ -1,5 +1,7 @@
 PYTHON_VERSION := 3.9.16
 
+RUST_SRC_FILES := $(shell find src/bin src/lib src/wasm -type f -name '*.rs' -o -name '*.toml' -o -name '*.lock' -o -name '*.txt')
+
 install-mac:
 	brew install pyenv
 	IS_INSTALLED=$(pyenv install --list | grep $(PYTHON_VERSION))
@@ -21,10 +23,10 @@ run-nn-test-mac:
 run-mcts-connect-four:
 	pyenv local aima-rs && cd src && cargo run --profile production --bin mcts-connect-four
 
-build:
+build: $(RUST_SRC_FILES)
 	cd src && ./build-mac.sh
 
-build-wasm:
+build-wasm: $(RUST_SRC_FILES)
 	cd src && cargo build --all --target wasm32-unknown-unknown --release
 
 build-web: build-wasm

@@ -116,12 +116,29 @@ class MyScene extends Phaser.Scene {
     }
 }
 
+class GameWorker {
+    worker: Worker;
+
+    constructor() {
+        this.worker = new Worker(new URL('./mcts_connect_four_worker.ts', import.meta.url));
+        this.worker.onmessage = (event) => {
+            console.log(`Worker said: ${event.data}`);
+        };
+    }
+
+    public getBestMove(): any {
+        this.worker.postMessage({type: 'getBestMove'});
+    }
+}
+
 export class MctsConnectFourGame {
     gameWrapper: GameWrapper;
+    gameWorker: GameWorker;
     game: Phaser.Game;
 
     constructor(mctsConnectFour: typeof import('./pkg_mcts_connect_four/mcts_connect_four')) {
         this.gameWrapper = new mctsConnectFour.GameWrapper(7, 6, true);
+        this.gameWorker = new GameWorker();
         this.game = new Phaser.Game({
             type: Phaser.AUTO,
             parent: 'game',
@@ -140,7 +157,7 @@ export class MctsConnectFourGame {
             })],
         });
 
-        const bestMove = this.gameWrapper.get_mcts_best_move();
+        const bestMove = this.gameWorker.getBestMove();
         console.log(`bestMove: ${bestMove}`);
     }
 }

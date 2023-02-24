@@ -16,7 +16,7 @@
 
 const path = require('path');
 
-const CopyPlugin = require("copy-webpack-plugin");
+const CopyPlugin = require('copy-webpack-plugin');
 const CssMinimizerPlugin = require('css-minimizer-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
@@ -46,12 +46,12 @@ module.exports = {
                     test: /[\\/]node_modules[\\/]/,
                     name: 'vendors',
                     chunks: 'all',
-                }
-            }
+                },
+            },
         },
         minimize: true,
         minimizer: [
-            `...`,
+            '...',
             new CssMinimizerPlugin(),
         ],
     },
@@ -67,12 +67,12 @@ module.exports = {
                             '@babel/preset-env',
                         ],
                         plugins: [
-                            ["@babel/transform-runtime", {
-                                "regenerator": true,
+                            ['@babel/transform-runtime', {
+                                regenerator: true,
                             }],
-                        ]
-                    }
-                }
+                        ],
+                    },
+                },
             },
             {
                 test: /\.css$/,
@@ -89,8 +89,8 @@ module.exports = {
             {
                 test: /\.wasm$/,
                 type: 'webassembly/sync',
-            }
-        ]
+            },
+        ],
     },
     experiments: {
         syncWebAssembly: true,
@@ -104,8 +104,8 @@ module.exports = {
                 path.resolve(__dirname, '..', 'lib', 'end-to-end', 'mcts-connect-four'),
             ],
             outDir: path.resolve(__dirname, 'src', 'pkg_mcts_connect_four'),
-            outName: "mcts_connect_four",
-            forceMode: "production",
+            outName: 'mcts_connect_four',
+            forceMode: 'production',
         }),
         new MiniCssExtractPlugin({
             filename: '[name].[contenthash].css',
@@ -126,6 +126,6 @@ module.exports = {
             template: path.resolve(__dirname, 'src', 'index.html'),
             filename: 'index.html',
             chunks: ['index'],
-        })
-    ]
+        }),
+    ],
 };
