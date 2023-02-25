@@ -15,8 +15,6 @@
  */
 
 import('./pkg_mcts_connect_four/mcts_connect_four').then((mctsConnectFour) => {
-    postMessage({ type: 'ready' });
-
     const gameWrapper = new mctsConnectFour.GameWrapper(7, 6, true);
 
     // eslint-disable-next-line no-inner-declarations
@@ -30,4 +28,6 @@ import('./pkg_mcts_connect_four/mcts_connect_four').then((mctsConnectFour) => {
 
     // eslint-disable-next-line no-restricted-globals
     addEventListener('message', onMessage);
+
+    postMessage({ type: 'ready' });
 });

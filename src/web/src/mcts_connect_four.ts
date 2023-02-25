@@ -42,17 +42,12 @@ class MyScene extends Phaser.Scene {
     // will be drawn on top of these.
     backgroundRects: Phaser.GameObjects.Rectangle[];
 
-    gameWrapper: GameWrapper;
-
-    turnText: Phaser.GameObjects.Text;
-
     add: Phaser.GameObjects.GameObjectFactory;
     load: Phaser.Loader.LoaderPlugin;
     tweens: Phaser.Tweens.TweenManager;
 
     // constructor that takes a config object and populates fields.
     constructor(
-        gameWrapper: GameWrapper,
         {
             width = 800,
             height = 600,
@@ -66,7 +61,6 @@ class MyScene extends Phaser.Scene {
         this.squareSizePx = squareSizePx;
         this.squarePaddingPx = squarePaddingPx;
         this.backgroundRects = [];
-        this.gameWrapper = gameWrapper;
 
         for (let i = 0; i < this.width * this.height; i += 1) {
             this.backgroundRects.push(null);
@@ -91,18 +85,6 @@ class MyScene extends Phaser.Scene {
                 );
             }
         }
-
-        // under the board render text from gameWrapper.turn() for whose turn it is.
-        const textPaddingPx = 10;
-        const textX = this.squarePaddingPx;
-        const textY = (this.height * (this.squareSizePx + this.squarePaddingPx)) + textPaddingPx;
-        this.turnText = this.add.text(
-            textX,
-            textY,
-            `${this.gameWrapper.turn()}'s turn`,
-            { fontSize: '32px', fill: '#fff' },
-        );
-
         // const logo = this.add.image(400, 70, 'logo');
         // this.tweens.add({
         //     targets: logo,
@@ -139,7 +121,6 @@ class GameWorker {
     // flush message queue using request idle callbacks. retry up to 10 times.
     public flushMessageQueue(retry: number): void {
         if (!this.isReady && retry < 10) {
-            console.log('Worker not ready, retrying');
             setTimeout(() => {
                 this.flushMessageQueue(retry + 1);
             }, 200);
@@ -181,7 +162,7 @@ export class MctsConnectFourGame {
                 mode: Phaser.Scale.NO_ZOOM,
                 autoCenter: Phaser.Scale.CENTER_BOTH,
             },
-            scene: [new MyScene(this.gameWrapper, {
+            scene: [new MyScene({
                 width: this.gameWrapper.width(),
                 height: this.gameWrapper.height(),
                 squareSizePx: 50,
