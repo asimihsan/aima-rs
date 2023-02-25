@@ -221,6 +221,7 @@ pub struct MctsConfig {
     pub playouts_per_simulation: monte_carlo_tree_search::Int,
     pub max_depth_per_playout: monte_carlo_tree_search::Int,
     pub tree_dump_dir: Option<PathBuf>,
+    pub debug_track_trees: monte_carlo_tree_search::DebugTrackTrees,
 }
 
 impl MctsConfig {
@@ -230,6 +231,7 @@ impl MctsConfig {
         playouts_per_simulation: monte_carlo_tree_search::Int,
         max_depth_per_playout: monte_carlo_tree_search::Int,
         tree_dump_dir: Option<PathBuf>,
+        debug_track_trees: monte_carlo_tree_search::DebugTrackTrees,
     ) -> Self {
         Self {
             iterations,
@@ -237,6 +239,7 @@ impl MctsConfig {
             playouts_per_simulation,
             max_depth_per_playout,
             tree_dump_dir,
+            debug_track_trees,
         }
     }
 
@@ -253,6 +256,7 @@ impl Default for MctsConfig {
             200,
             50,
             Some(PathBuf::from("/tmp/tree-dump-dir")),
+            monte_carlo_tree_search::DebugTrackTrees::Track,
         )
     }
 }
@@ -264,12 +268,17 @@ pub fn get_best_mcts_move(
 ) -> connect_four_logic::Move {
     let mut mcts = monte_carlo_tree_search::Mcts::<State, Action>::new(
         state.clone(),
-        monte_carlo_tree_search::IterationLimitKind::Iterations(config.iterations),
-        config.exploration_constant,
-        config.playouts_per_simulation,
-        config.max_depth_per_playout,
-        rng,
-        config.tree_dump_dir.clone(),
+        monte_carlo_tree_search::MctsArgs {
+            iteration_limit: monte_carlo_tree_search::IterationLimitKind::Iterations(
+                config.iterations,
+            ),
+            exploration_constant: config.exploration_constant,
+            playouts_per_simulation: config.playouts_per_simulation,
+            max_depth_per_playout: config.max_depth_per_playout,
+            rng,
+            tree_dump_dir: config.tree_dump_dir.clone(),
+            debug_track_trees: config.debug_track_trees,
+        },
     );
 
     mcts.run();

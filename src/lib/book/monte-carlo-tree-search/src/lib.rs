@@ -288,19 +288,33 @@ pub enum IterationLimitKind {
     TimeSeconds(Duration),
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum DebugTrackTrees {
+    None,
+    Track,
+}
+
+#[derive(Debug, Clone)]
+pub struct MctsArgs {
+    pub iteration_limit: IterationLimitKind,
+    pub exploration_constant: Float,
+    pub playouts_per_simulation: Int,
+    pub max_depth_per_playout: Int,
+    pub rng: Rc<RefCell<Rng>>,
+
+    // Directory inside which to put serialized trees.
+    // If None, don't serialize trees.
+    pub tree_dump_dir: Option<PathBuf>,
+
+    // If true, track trees and keep them in memory. This is useful for debugging.
+    pub debug_track_trees: DebugTrackTrees,
+}
+
 // Mcts is the main Monte Carlo Tree Search algorithm.
 // See section 5.4 Monte Carlo Tree Search page 162 and 163.
 pub struct Mcts<_State: State<_Action>, _Action: Action> {
     tree: Rc<RefCell<MctsTree<_State, _Action>>>,
-    iteration_limit: IterationLimitKind,
-    exploration_constant: Float,
-    playouts_per_simulation: Int,
-    max_depth_per_playout: Int,
-    rng: Rc<RefCell<Rng>>,
-
-    // Directory inside which to put serialized trees.
-    // If None, don't serialize trees.
-    tree_dump_dir: Option<PathBuf>,
+    args: MctsArgs,
 }
 
 impl<_State, _Action> Mcts<_State, _Action>
@@ -308,44 +322,15 @@ where
     _State: State<_Action>,
     _Action: Action,
 {
-    pub fn new(
-        root_state: _State,
-        iteration_limit: IterationLimitKind,
-        exploration_constant: Float,
-        playouts_per_simulation: Int,
-        max_depth_per_playout: Int,
-        rng: Rc<RefCell<Rng>>,
-        tree_dump_dir: Option<PathBuf>,
-    ) -> Self {
-        Mcts::new_from_tree(
-            MctsTree::new(root_state),
-            iteration_limit,
-            exploration_constant,
-            playouts_per_simulation,
-            max_depth_per_playout,
-            rng,
-            tree_dump_dir,
-        )
+    pub fn new(root_state: _State, args: MctsArgs) -> Self {
+        Mcts::new_from_tree(MctsTree::new(root_state), args)
     }
 
     // useful for tests
-    fn new_from_tree(
-        tree: MctsTree<_State, _Action>,
-        iteration_limit: IterationLimitKind,
-        exploration_constant: Float,
-        playouts_per_simulation: Int,
-        max_depth_per_playout: Int,
-        rng: Rc<RefCell<Rng>>,
-        tree_dump_dir: Option<PathBuf>,
-    ) -> Self {
+    fn new_from_tree(tree: MctsTree<_State, _Action>, args: MctsArgs) -> Self {
         Self {
             tree: Rc::new(RefCell::new(tree)),
-            iteration_limit,
-            exploration_constant,
-            playouts_per_simulation,
-            max_depth_per_playout,
-            rng: Rc::clone(&rng),
-            tree_dump_dir,
+            args,
         }
     }
 
@@ -360,7 +345,7 @@ where
     }
 
     fn maybe_dump_tree(&self, iteration: Int) {
-        if let Some(tree_dump_dir) = &self.tree_dump_dir {
+        if let Some(tree_dump_dir) = &self.args.tree_dump_dir {
             let tree = self.serialize_tree();
 
             let filename = format!("tree-{:03}.json", iteration);
@@ -372,7 +357,7 @@ where
     }
 
     pub fn run(&mut self) {
-        match self.iteration_limit {
+        match self.args.iteration_limit {
             IterationLimitKind::Iterations(iterations) => {
                 for i in 0..iterations {
                     self.iteration(i);
@@ -395,11 +380,11 @@ where
         let (node_key, state) = self.expand(node_key, state);
 
         let result = {
-            let rng = Rc::clone(&self.rng);
+            let rng = Rc::clone(&self.args.rng);
             let mut rng = rng.borrow_mut();
             state.simulate(
-                self.playouts_per_simulation,
-                self.max_depth_per_playout,
+                self.args.playouts_per_simulation,
+                self.args.max_depth_per_playout,
                 &mut rng,
             )
         };
@@ -415,7 +400,7 @@ where
         let mut state = tree.root_state.clone();
         let mut node_key = tree.get_root_nodekey();
         loop {
-            let uct_select_result = uct_select(&tree, node_key, self.exploration_constant);
+            let uct_select_result = uct_select(&tree, node_key, self.args.exploration_constant);
             if uct_select_result.finished {
                 return (uct_select_result.node, state);
             } else {
@@ -455,7 +440,7 @@ where
             let tree = Rc::clone(&self.tree);
             let tree = tree.borrow();
             let random_action = actions
-                .choose(&mut self.rng.borrow_mut().deref_mut())
+                .choose(&mut self.args.rng.borrow_mut().deref_mut())
                 .unwrap();
             (
                 *tree
@@ -615,12 +600,15 @@ mod tests {
     fn new_my_mcts(rng: Rc<RefCell<Rng>>) -> MyMcts {
         Mcts::new(
             MyState { data: 0 },
-            IterationLimitKind::Iterations(1000),
-            1.0,
-            100,
-            10,
-            rng,
-            None,
+            MctsArgs {
+                iteration_limit: IterationLimitKind::Iterations(1000),
+                exploration_constant: 1.0,
+                playouts_per_simulation: 100,
+                max_depth_per_playout: 10,
+                rng,
+                tree_dump_dir: None,
+                debug_track_trees: DebugTrackTrees::None,
+            },
         )
     }
 
@@ -767,12 +755,15 @@ mod tests {
         let max_depth_per_playout = 10;
         let mut mcts = MyMcts::new(
             MyState { data: 0 },
-            IterationLimitKind::Iterations(10),
-            std::f64::consts::SQRT_2,
-            playouts_per_simulation,
-            max_depth_per_playout,
-            rng,
-            None,
+            MctsArgs {
+                iteration_limit: IterationLimitKind::Iterations(10),
+                exploration_constant: std::f64::consts::SQRT_2,
+                playouts_per_simulation,
+                max_depth_per_playout,
+                rng,
+                tree_dump_dir: None,
+                debug_track_trees: DebugTrackTrees::None,
+            },
         );
         mcts.run();
 
