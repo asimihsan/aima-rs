@@ -24,7 +24,19 @@
                     </div>
                 </div>
             </div>
-            <div id="game"></div>
+
+            <!-- Row with spinner and text "CPU is thinking.." -->
+            <div class="row" id="cpu-thinking">
+                <div class="col-12">
+                    <div class="spinner-border spinner-border-sm" role="status">
+                    </div>
+                    <span id="cpu-thinking-text">CPU is thinking...</span>
+                </div>
+            </div>
+
+            <div class="col-6">
+                <div id="game"></div>
+            </div>
         </div>
     </main>
     <%= require('html-loader!./template/footer.html').default %>

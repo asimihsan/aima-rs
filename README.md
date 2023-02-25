@@ -47,9 +47,9 @@ and can be run with `cargo run --profile production --bin mcts-connect-four`.
 
 #### MCTS Connect Four web example
 
-- [ ] Calculate turn in web worker
+- [x] Calculate turn in web worker
 - [ ] Animate when turn is being calculated
-- [ ] After turn is complete, update UI with token
+- [ ] After turn is complete, update UI with token with insert-or-pop-specific animation.
 - [ ] After turn is complete, show MCTS tree with step button to step through iterations. Draw tree with SVG outside
   the game; let Phaser only deal with game.
 - [ ] After turn is complete show what CPU played
