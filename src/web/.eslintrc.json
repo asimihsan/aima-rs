@@ -32,5 +32,6 @@
                 "config": "./webpack.common.js"
             }
         }
-    }
+    },
+    "ignorePatterns": ["src/pkg_*"]
 }

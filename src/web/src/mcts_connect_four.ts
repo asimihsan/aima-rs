@@ -17,7 +17,7 @@
 // @ts-ignore
 import Phaser from 'phaser';
 
-import {GameWrapper} from './pkg_mcts_connect_four';
+import { GameWrapper } from './pkg_mcts_connect_four';
 
 const importPromise = import('./pkg_mcts_connect_four/mcts_connect_four');
 
@@ -60,7 +60,7 @@ class MyScene extends Phaser.Scene {
             squarePaddingPx = 10,
         } = {},
     ) {
-        super({key: 'MyScene'});
+        super({ key: 'MyScene' });
         this.width = width;
         this.height = height;
         this.squareSizePx = squareSizePx;
@@ -100,7 +100,7 @@ class MyScene extends Phaser.Scene {
             textX,
             textY,
             `${this.gameWrapper.turn()}'s turn`,
-            {fontSize: '32px', fill: '#fff'},
+            { fontSize: '32px', fill: '#fff' },
         );
 
         // const logo = this.add.image(400, 70, 'logo');
@@ -118,16 +118,48 @@ class MyScene extends Phaser.Scene {
 
 class GameWorker {
     worker: Worker;
+    isReady: boolean;
+    messageQueue: any[];
 
     constructor() {
+        this.isReady = false;
+        this.messageQueue = [];
         this.worker = new Worker(new URL('./mcts_connect_four_worker.ts', import.meta.url));
         this.worker.onmessage = (event) => {
-            console.log(`Worker said: ${event.data}`);
+            if (event.data.type === 'ready') {
+                console.log('Worker is ready');
+                this.isReady = true;
+                return;
+            }
+            console.log('Worker said');
+            console.log(event.data);
         };
     }
 
+    // flush message queue using request idle callbacks. retry up to 10 times.
+    public flushMessageQueue(retry: number): void {
+        if (!this.isReady && retry < 10) {
+            console.log('Worker not ready, retrying');
+            setTimeout(() => {
+                this.flushMessageQueue(retry + 1);
+            }, 200);
+            return;
+        }
+        if (this.isReady) {
+            for (let i = 0; i < this.messageQueue.length; i += 1) {
+                const message = this.messageQueue[i];
+                requestIdleCallback(() => {
+                    this.worker.postMessage(message);
+                });
+            }
+            this.messageQueue = [];
+        }
+    }
+
     public getBestMove(): any {
-        this.worker.postMessage({type: 'getBestMove'});
+        // add the message queue, then flush
+        this.messageQueue.push({ type: 'getBestMove' });
+        this.flushMessageQueue(0);
     }
 }
 

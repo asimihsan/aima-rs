@@ -250,7 +250,7 @@ impl Default for MctsConfig {
         Self::new(
             300,
             std::f64::consts::SQRT_2,
-            500,
+            200,
             50,
             Some(PathBuf::from("/tmp/tree-dump-dir")),
         )
