@@ -51,8 +51,14 @@ fn main() {
             let action = input.next().unwrap();
             let col = input.next().unwrap().parse::<usize>().unwrap();
             match action {
-                "i" => connect_four_logic::Move::Insert(col),
-                "p" => connect_four_logic::Move::Pop(col),
+                "i" => connect_four_logic::Move {
+                    move_type: connect_four_logic::MoveType::Insert,
+                    column: col,
+                },
+                "p" => connect_four_logic::Move {
+                    move_type: connect_four_logic::MoveType::Pop,
+                    column: col,
+                },
                 _ => panic!("invalid action"),
             }
         } else {
@@ -64,14 +70,15 @@ fn main() {
             Player::Player2 => connect_four_logic::Player::Player2,
         };
         let mut new_board = state.board;
-        match action {
-            connect_four_logic::Move::Insert(col) => {
-                new_board.insert(col, player).unwrap();
+        match action.move_type {
+            connect_four_logic::MoveType::Insert => {
+                new_board.insert(action.column, player).unwrap();
             }
-            connect_four_logic::Move::Pop(col) => {
-                new_board.pop(col, player).unwrap();
+            connect_four_logic::MoveType::Pop => {
+                new_board.pop(action.column, player).unwrap();
             }
         }
+
         state.board = new_board;
         state.turn = match state.turn {
             Player::Player1 => Player::Player2,
@@ -107,6 +114,7 @@ mod tests {
             max_depth_per_playout: 50,
             exploration_constant: std::f64::consts::SQRT_2,
             tree_dump_dir: None,
+            debug_track_trees: monte_carlo_tree_search::DebugTrackTrees::None,
         };
 
         let rng = Rc::new(RefCell::new(rand_pcg::Pcg64::seed_from_u64(42)));
@@ -127,11 +135,11 @@ mod tests {
         let best_move =
             mcts_connect_four::get_best_mcts_move(&state, &mcts_config, Rc::clone(&rng));
 
-        assert!(
-            best_move == connect_four_logic::Move::Insert(2)
-                || best_move == connect_four_logic::Move::Insert(5),
-            "best move: {:?}",
-            best_move
-        );
+        match best_move.move_type {
+            connect_four_logic::MoveType::Insert => {
+                assert!(best_move.column == 2 || best_move.column == 5);
+            }
+            _ => panic!("expected insert"),
+        }
     }
 }

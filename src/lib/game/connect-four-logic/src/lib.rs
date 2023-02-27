@@ -160,11 +160,12 @@ impl Board {
         (0..self.height).map(|row| self.get(col, row)).collect()
     }
 
-    /// Check if you can insert a piece into a column.
-    pub fn can_insert(&self, col: usize) -> Result<(), ConnectFourError> {
+    /// Check if you can insert a piece into a column. Return the row where the inserted piece will
+    /// be.
+    pub fn can_insert(&self, col: usize) -> Result<usize, ConnectFourError> {
         for row in (0..self.height).rev() {
             if self.get(col, row) == Cell::Empty {
-                return Ok(());
+                return Ok(row);
             }
         }
         Err(ConnectFourError::ColumnFull(col))
@@ -174,15 +175,10 @@ impl Board {
     /// This inserts into the first empty cell in the column, going from the bottom up.
     pub fn insert(&mut self, col: usize, player: Player) -> Result<(), ConnectFourError> {
         match self.can_insert(col) {
-            Ok(()) => {
-                for row in (0..self.height).rev() {
-                    let cell = self.get_mut(col, row);
-                    if *cell == Cell::Empty {
-                        *cell = Cell::Player(player);
-                        return Ok(());
-                    }
-                }
-                unreachable!()
+            Ok(row) => {
+                let cell = self.get_mut(col, row);
+                *cell = Cell::Player(player);
+                Ok(())
             }
             Err(e) => Err(e),
         }
@@ -229,21 +225,37 @@ impl Board {
     }
 }
 
-/// A move is either inserting a piece into a column, or popping a piece from a column.
+/// MoveType is either Insert or Pop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Move {
-    /// Insert a piece into the top of a column.
-    Insert(usize),
+pub enum MoveType {
+    /// Insert a piece into a column.
+    Insert,
 
-    /// Pop a piece from the bottom of a column.
-    Pop(usize),
+    /// Pop a piece from a column.
+    Pop,
+}
+
+/// Move is a move type and a column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Move {
+    /// The move type.
+    pub move_type: MoveType,
+
+    /// The column.
+    pub column: usize,
 }
 
 impl std::fmt::Display for Move {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Move::Insert(col) => write!(f, "Insert({})", col),
-            Move::Pop(col) => write!(f, "Pop({})", col),
+            Move {
+                move_type: MoveType::Insert,
+                column: col,
+            } => write!(f, "Insert({})", col),
+            Move {
+                move_type: MoveType::Pop,
+                column: col,
+            } => write!(f, "Pop({})", col),
         }
     }
 }
@@ -253,10 +265,16 @@ pub fn get_legal_moves(board: &Board, player: Player) -> Vec<Move> {
     let mut moves = Vec::new();
     for col in 0..board.width {
         if board.can_insert(col).is_ok() {
-            moves.push(Move::Insert(col));
+            moves.push(Move {
+                move_type: MoveType::Insert,
+                column: col,
+            });
         }
         if board.can_pop(col, player).is_ok() {
-            moves.push(Move::Pop(col));
+            moves.push(Move {
+                move_type: MoveType::Pop,
+                column: col,
+            });
         }
     }
     moves
@@ -380,8 +398,14 @@ mod tests {
             let legal_moves = get_legal_moves(&board, *player);
             assert_eq!(legal_moves.len(), 7);
             for col in 0..7 {
-                assert!(legal_moves.contains(&Move::Insert(col)));
-                assert!(!legal_moves.contains(&Move::Pop(col)));
+                assert!(legal_moves.contains(&Move {
+                    move_type: MoveType::Insert,
+                    column: col,
+                }));
+                assert!(!legal_moves.contains(&Move {
+                    move_type: MoveType::Pop,
+                    column: col,
+                }));
             }
         }
     }
@@ -555,7 +579,7 @@ mod tests {
 
         let col0_after = board.get_col(0);
         assert_eq!(Cell::Empty, col0_after[0]);
-        assert_eq!(Ok(()), board.can_insert(0));
+        assert_eq!(Ok(0), board.can_insert(0));
     }
 
     fn vec_of_player() -> impl Strategy<Value = Vec<Player>> {

@@ -17,12 +17,35 @@
 // @ts-ignore
 import Phaser from 'phaser';
 
-import { GameWrapper } from './pkg_mcts_connect_four';
-
 const importPromise = import('./pkg_mcts_connect_four/mcts_connect_four');
 
 export default function importPromiseMctsConnectFour() {
     return importPromise;
+}
+
+enum ScenePlayer {
+    Player1,
+    Player2
+}
+
+enum GameState {
+    CpuTurn,
+    HumanTurn,
+}
+
+enum GameStateInput {
+    CpuStartThinking,
+    CpuFinishedThinking,
+}
+
+class Cell {
+    row: number;
+    column: number;
+
+    constructor(row: number, column: number) {
+        this.row = row;
+        this.column = column;
+    }
 }
 
 class MyScene extends Phaser.Scene {
@@ -42,6 +65,12 @@ class MyScene extends Phaser.Scene {
     // will be drawn on top of these.
     backgroundRects: Phaser.GameObjects.Rectangle[];
 
+    player1Tokens: Phaser.GameObjects.Ellipse[];
+    player1Color: number = 0x0000ff;
+    player2Tokens: Phaser.GameObjects.Ellipse[];
+    player2color: number = 0xff0000;
+
+    // Unnecessary fields that are inehrited but needed to make eslint happy.
     add: Phaser.GameObjects.GameObjectFactory;
     load: Phaser.Loader.LoaderPlugin;
     tweens: Phaser.Tweens.TweenManager;
@@ -61,9 +90,13 @@ class MyScene extends Phaser.Scene {
         this.squareSizePx = squareSizePx;
         this.squarePaddingPx = squarePaddingPx;
         this.backgroundRects = [];
+        this.player1Tokens = [];
+        this.player2Tokens = [];
 
         for (let i = 0; i < this.width * this.height; i += 1) {
             this.backgroundRects.push(null);
+            this.player1Tokens.push(null);
+            this.player2Tokens.push(null);
         }
     }
 
@@ -85,36 +118,131 @@ class MyScene extends Phaser.Scene {
                 );
             }
         }
-        // const logo = this.add.image(400, 70, 'logo');
-        // this.tweens.add({
-        //     targets: logo,
-        //     y: 500,
-        //     duration: 2000,
-        //     ease: 'Power2',
-        //     yoyo: true,
-        //     loop: -1,
-        //
-        // });
+    }
+
+    getBackgroundRect(row: number, col: number): Phaser.GameObjects.Rectangle {
+        return this.backgroundRects[col * this.width + row];
+    }
+
+    getPlayer1Token(row: number, col: number): Phaser.GameObjects.Ellipse {
+        return this.player1Tokens[col * this.width + row];
+    }
+
+    setPlayer1Token(row: number, col: number, object: Phaser.GameObjects.Ellipse) {
+        this.player1Tokens[col * this.width + row] = object;
+    }
+
+    getPlayer2Token(row: number, col: number): Phaser.GameObjects.Ellipse {
+        return this.player2Tokens[col * this.width + row];
+    }
+
+    setPlayer2Token(row: number, col: number, object: Phaser.GameObjects.Ellipse) {
+        this.player2Tokens[col * this.width + row] = object;
+    }
+
+    renderInsert(player: ScenePlayer, row: number, col: number) {
+        const rect = this.getBackgroundRect(row, col);
+
+        // token starts above the column above the top row and then tweens down to the rect.x rect.y location.
+        const token = this.add.circle(
+            rect.x,
+            0,
+            rect.width / 2,
+            player === ScenePlayer.Player1 ? this.player1Color : this.player2color,
+        );
+        this.tweens.add({
+            targets: token,
+            y: rect.y,
+            duration: 800,
+            ease: 'Bounce.easeOut',
+        });
+
+        if (player === ScenePlayer.Player1) {
+            this.setPlayer1Token(row, col, token);
+        } else if (player === ScenePlayer.Player2) {
+            this.setPlayer2Token(row, col, token);
+        }
+    }
+
+    clearMouseEventHandlers() {
+        for (let i = 0; i < this.backgroundRects.length; i += 1) {
+            if (this.backgroundRects[i] !== null) {
+                this.backgroundRects[i].setStrokeStyle(0);
+                this.backgroundRects[i].removeInteractive();
+            }
+        }
+        for (let i = 0; i < this.player1Tokens.length; i += 1) {
+            if (this.player1Tokens[i] !== null) {
+                this.player1Tokens[i].removeInteractive();
+            }
+        }
+        for (let i = 0; i < this.player2Tokens.length; i += 1) {
+            if (this.player2Tokens[i] !== null) {
+                this.player2Tokens[i].removeInteractive();
+            }
+        }
+    }
+
+    setCellAsInteractive(row: number, column: number, callback: () => void) {
+        const rect = this.getBackgroundRect(row, column);
+        rect.setInteractive();
+
+        // on mouseover, show stroke
+        rect.on('pointerover', () => {
+            rect.setStrokeStyle(4, 0x000000);
+        });
+
+        rect.on('pointerout', () => {
+            rect.setStrokeStyle(0);
+        });
+
+        // on mouseclick, call callback
+        rect.on('pointerdown', () => {
+            callback();
+        });
+    }
+}
+
+class MessageAndCallback {
+    message: any;
+    callback: (data: any) => void;
+
+    constructor(message: any, callback: (data: any) => void) {
+        this.message = message;
+        this.callback = callback;
     }
 }
 
 class GameWorker {
     worker: Worker;
     isReady: boolean;
-    messageQueue: any[];
+    outgoingMessageQueue: MessageAndCallback[];
+    incomingMessageQueue: MessageAndCallback[];
+
+    // eslint-disable-next-line no-unused-vars
+    currentWorkerCallback: (data: any) => void;
 
     constructor() {
         this.isReady = false;
-        this.messageQueue = [];
+        this.outgoingMessageQueue = [];
+        this.incomingMessageQueue = [];
+
+        // @ts-ignore
         this.worker = new Worker(new URL('./mcts_connect_four_worker.ts', import.meta.url));
+
         this.worker.onmessage = (event) => {
             if (event.data.type === 'ready') {
                 console.log('Worker is ready');
                 this.isReady = true;
                 return;
             }
-            console.log('Worker said');
-            console.log(event.data);
+
+            if (this.incomingMessageQueue.length > 0) {
+                const messageAndCallback = this.incomingMessageQueue.shift();
+                console.log('incoming message');
+                console.log(event.data);
+                messageAndCallback.callback(event.data);
+            }
         };
     }
 
@@ -127,31 +255,74 @@ class GameWorker {
             return;
         }
         if (this.isReady) {
-            for (let i = 0; i < this.messageQueue.length; i += 1) {
-                const message = this.messageQueue[i];
-                requestIdleCallback(() => {
-                    this.worker.postMessage(message);
-                });
+            while (this.outgoingMessageQueue.length > 0) {
+                const messageAndCallback = this.outgoingMessageQueue.shift();
+                console.log('outgoing message');
+                console.log(messageAndCallback.message);
+                this.worker.postMessage(messageAndCallback.message);
+                this.incomingMessageQueue.push(messageAndCallback);
             }
-            this.messageQueue = [];
+
+            if (this.incomingMessageQueue.length > 0) {
+                if (retry !== -1) {
+                    setTimeout(() => {
+                        this.flushMessageQueue(retry + 1);
+                    }, 200);
+                }
+            }
         }
     }
 
-    public getBestMove(): any {
-        // add the message queue, then flush
-        this.messageQueue.push({ type: 'getBestMove' });
-        this.flushMessageQueue(0);
+    async requestResponse(message: any): Promise<any> {
+        return new Promise((resolve) => {
+            const messageAndCallback = new MessageAndCallback(message, resolve);
+            this.outgoingMessageQueue.push(messageAndCallback);
+            this.flushMessageQueue(0);
+        });
+    }
+
+    public async getBestMove(): Promise<any> {
+        return this.requestResponse({ type: 'getBestMove' });
+    }
+
+    public async applyMove(moveType: string, column: number): Promise<any> {
+        return this.requestResponse({
+            type: 'applyMove',
+            move: {
+                move_type: moveType,
+                column,
+            },
+        });
+    }
+
+    public async getLegalMovesCells(): Promise<any> {
+        return this.requestResponse({ type: 'getLegalMovesCells' });
+    }
+
+    public async turn(): Promise<any> {
+        return this.requestResponse({ type: 'turn' });
     }
 }
 
 export class MctsConnectFourGame {
-    gameWrapper: GameWrapper;
+    cpuThinking: HTMLElement;
+    gameState: GameState;
+
     gameWorker: GameWorker;
+    scene: MyScene;
     game: Phaser.Game;
 
-    constructor(mctsConnectFour: typeof import('./pkg_mcts_connect_four/mcts_connect_four')) {
-        this.gameWrapper = new mctsConnectFour.GameWrapper(7, 6, true);
+    cellEventBlocklist: Set<Cell>;
+
+    constructor() {
+        this.cpuThinking = document.getElementById('cpu-thinking');
         this.gameWorker = new GameWorker();
+        this.scene = new MyScene({
+            width: 7,
+            height: 6,
+            squareSizePx: 50,
+            squarePaddingPx: 10,
+        });
         this.game = new Phaser.Game({
             type: Phaser.AUTO,
             parent: 'game',
@@ -162,15 +333,93 @@ export class MctsConnectFourGame {
                 mode: Phaser.Scale.NO_ZOOM,
                 autoCenter: Phaser.Scale.CENTER_BOTH,
             },
-            scene: [new MyScene({
-                width: this.gameWrapper.width(),
-                height: this.gameWrapper.height(),
-                squareSizePx: 50,
-                squarePaddingPx: 10,
-            })],
+            scene: [this.scene],
         });
 
-        const bestMove = this.gameWorker.getBestMove();
-        console.log(`bestMove: ${bestMove}`);
+        this.gameState = GameState.CpuTurn;
+        this.cellEventBlocklist = new Set();
+        this.changeState(GameStateInput.CpuStartThinking);
+    }
+
+    showCpuIsThinking(): void {
+        this.cpuThinking.classList.remove('invisible');
+        this.cpuThinking.classList.add('visible');
+    }
+
+    hideCpuIsThinking(): void {
+        this.cpuThinking.classList.remove('visible');
+        this.cpuThinking.classList.add('invisible');
+    }
+
+    async waitForCpuTurn(): Promise<void> {
+        console.log('waitForCpuTurn');
+        this.gameWorker.flushMessageQueue(-1);
+        const turn = await this.gameWorker.turn();
+        if (turn === 'Player1') {
+            await this.changeState(GameStateInput.CpuStartThinking);
+        } else {
+            setTimeout(() => {
+                this.waitForCpuTurn();
+            }, 500);
+        }
+    }
+
+    async changeState(gameStateInput: GameStateInput) {
+        switch (this.gameState) {
+        case GameState.CpuTurn:
+            if (gameStateInput === GameStateInput.CpuStartThinking) {
+                this.scene.clearMouseEventHandlers();
+                this.cellEventBlocklist.clear();
+                this.gameState = GameState.CpuTurn;
+                this.showCpuIsThinking();
+                const bestMove = await this.gameWorker.getBestMove();
+                console.log('bestMove');
+                console.log(bestMove);
+
+                const moveType = bestMove.actual_move.move_type;
+                const col = bestMove.actual_move.column;
+                await this.gameWorker.applyMove(moveType, col);
+
+                if (moveType === 'Insert') {
+                    const row = bestMove.maybe_insert_row;
+                    this.scene.renderInsert(ScenePlayer.Player1, row, col);
+                }
+
+                await this.changeState(GameStateInput.CpuFinishedThinking);
+            } else if (gameStateInput === GameStateInput.CpuFinishedThinking) {
+                this.hideCpuIsThinking();
+                this.gameState = GameState.HumanTurn;
+                const legalMoves = await this.gameWorker.getLegalMovesCells();
+
+                // legalMoves has array of moves. each move is an object with move_type, row, and column.
+                // for each move, call setCellAsInteractive.
+                for (let i = 0; i < legalMoves.moves.length; i += 1) {
+                    const move = legalMoves.moves[i];
+                    this.scene.setCellAsInteractive(move.row, move.column, async () => {
+                        console.log(this.cellEventBlocklist);
+                        const cell = new Cell(move.row, move.column);
+                        if (this.cellEventBlocklist.has(cell)) {
+                            console.log('debounce');
+                            return;
+                        }
+                        this.cellEventBlocklist.add(cell);
+                        console.log('Human clicked on cell');
+                        console.log(move.row);
+                        console.log(move.column);
+
+                        await this.gameWorker.applyMove(move.move_type, move.column);
+                        if (move.move_type === 'Insert') {
+                            this.scene.renderInsert(ScenePlayer.Player2, move.row, move.column);
+                        }
+                        this.gameState = GameState.CpuTurn;
+                        this.waitForCpuTurn();
+                    });
+                }
+            }
+            break;
+
+        default:
+            console.log('Unhandled state transition');
+        }
     }
 }

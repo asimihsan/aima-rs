@@ -22,7 +22,16 @@ import('./pkg_mcts_connect_four/mcts_connect_four').then((mctsConnectFour) => {
         const { data } = event;
         if (data.type === 'getBestMove') {
             const bestMove = gameWrapper.get_mcts_best_move();
-            postMessage({ type: 'bestMove', bestMove });
+            postMessage(bestMove);
+        } else if (data.type === 'applyMove') {
+            const result = gameWrapper.apply_move(data.move);
+            postMessage(result);
+        } else if (data.type === 'getLegalMovesCells') {
+            const legalMoves = gameWrapper.get_legal_moves_cells();
+            postMessage(legalMoves);
+        } else if (data.type === 'turn') {
+            const turn = gameWrapper.turn();
+            postMessage(turn);
         }
     }
 

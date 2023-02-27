@@ -18,13 +18,58 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use rand_core::SeedableRng;
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
+
+use monte_carlo_tree_search::State;
 
 #[wasm_bindgen]
 pub struct GameWrapper {
     state: mcts_connect_four::State,
     mcts_config: mcts_connect_four::MctsConfig,
     rng: Rc<RefCell<rand_pcg::Pcg64>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Turn {
+    Player1,
+    Player2,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MoveType {
+    Insert,
+    Pop,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Move {
+    pub move_type: MoveType,
+    pub column: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct MoveResponse {
+    pub actual_move: Move,
+    pub maybe_insert_row: Option<usize>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ApplyMoveRequest {
+    pub move_type: MoveType,
+    pub column: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct LegalMove {
+    pub move_type: MoveType,
+    pub row: usize,
+    pub column: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct LegalMoveResponse {
+    pub moves: Vec<LegalMove>,
 }
 
 #[wasm_bindgen]
@@ -61,22 +106,11 @@ impl GameWrapper {
     /// turn is the player whose turn it is to make a move and whether they are a human or a CPU.
     /// e.g. "Player 1 (human).
     pub fn turn(&self) -> JsValue {
-        let mut result = String::new();
-        match self.state.turn {
-            mcts_connect_four::Player::Player1 => {
-                result.push_str("Player 1");
-            }
-            mcts_connect_four::Player::Player2 => {
-                result.push_str("Player 2");
-            }
-        }
-        if self.state.turn == self.state.who_am_i {
-            result.push_str(" (CPU)");
-        } else {
-            result.push_str(" (human)");
-        }
-
-        serde_wasm_bindgen::to_value(&result).unwrap()
+        let turn = match self.state.turn {
+            mcts_connect_four::Player::Player1 => Turn::Player1,
+            mcts_connect_four::Player::Player2 => Turn::Player2,
+        };
+        serde_wasm_bindgen::to_value(&turn).unwrap()
     }
 
     pub fn width(&self) -> usize {
@@ -87,13 +121,84 @@ impl GameWrapper {
         self.state.board.height
     }
 
-    pub fn get_mcts_best_move(&self) -> JsValue {
+    pub fn get_mcts_best_move(&self) -> Result<JsValue, JsValue> {
+        if self.state.turn != self.state.who_am_i {
+            return Err(serde_wasm_bindgen::to_value("Not CPU's turn").unwrap());
+        }
+
         let action = mcts_connect_four::get_best_mcts_move(
             &self.state,
             &self.mcts_config,
             Rc::clone(&self.rng),
         );
-        let result = serde_json::to_string(&action).unwrap();
-        JsValue::from_str(&result)
+
+        // If this is an insert, then use can_insert to get the row.
+        let response = if action.move_type == connect_four_logic::MoveType::Insert {
+            let maybe_insert_row = self.state.board.can_insert(action.column).unwrap();
+            MoveResponse {
+                actual_move: Move {
+                    move_type: MoveType::Insert,
+                    column: action.column,
+                },
+                maybe_insert_row: Some(maybe_insert_row),
+            }
+        } else {
+            MoveResponse {
+                actual_move: Move {
+                    move_type: MoveType::Pop,
+                    column: action.column,
+                },
+                maybe_insert_row: None,
+            }
+        };
+        Ok(serde_wasm_bindgen::to_value(&response).unwrap())
+    }
+
+    pub fn apply_move(&mut self, apply_move_request: JsValue) -> Result<JsValue, JsValue> {
+        let apply_move_request: ApplyMoveRequest =
+            serde_wasm_bindgen::from_value(apply_move_request)?;
+        let action = match apply_move_request.move_type {
+            MoveType::Insert => connect_four_logic::MoveType::Insert,
+            MoveType::Pop => connect_four_logic::MoveType::Pop,
+        };
+        let action = mcts_connect_four::Action(connect_four_logic::Move {
+            move_type: action,
+            column: apply_move_request.column,
+        });
+        self.state.apply_move(&action);
+        let result = serde_wasm_bindgen::to_value(&self.state).unwrap();
+        Ok(result)
+    }
+
+    /// get_legal_moves_cells will return cells on which the current player can move. For
+    /// an insert the cell will be the first empty cell top-down in a column. For a pop it will
+    /// be the bottom of the column. self.state.get_actions returns moves, but we need to return
+    /// LegalMoveResponse, which has Vec<LegalMove>
+    pub fn get_legal_moves_cells(&self) -> JsValue {
+        let legal_moves = self.state.get_actions();
+        let moves: Vec<LegalMove> = legal_moves
+            .into_iter()
+            .map(|action| {
+                let actual_move = action.0;
+                let column = actual_move.column;
+                match actual_move.move_type {
+                    connect_four_logic::MoveType::Insert => {
+                        let row = self.state.board.can_insert(actual_move.column).unwrap();
+                        LegalMove {
+                            move_type: MoveType::Insert,
+                            row,
+                            column,
+                        }
+                    }
+                    connect_four_logic::MoveType::Pop => LegalMove {
+                        move_type: MoveType::Pop,
+                        column,
+                        row: self.height() - 1,
+                    },
+                }
+            })
+            .collect();
+        let result = LegalMoveResponse { moves };
+        serde_wasm_bindgen::to_value(&result).unwrap()
     }
 }

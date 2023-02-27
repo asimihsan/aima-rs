@@ -20,3 +20,4 @@ wasm-bindgen = "0.2.84"
 
 connect-four-logic = { path = "../../lib/game/connect-four-logic" }
 mcts-connect-four = { path = "../../lib/end-to-end/mcts-connect-four" }
+monte-carlo-tree-search = { path = "../../lib/book/monte-carlo-tree-search" }

@@ -18,17 +18,13 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import './index.css';
 import './footer.css';
 
-import { contentLoaded, loaded } from 'document-promises';
+import { loaded } from 'document-promises';
 
-import importPromiseMctsConnectFour, { MctsConnectFourGame } from './mcts_connect_four';
+import { MctsConnectFourGame } from './mcts_connect_four';
 
 (() => {
-    let mctsConnectFour;
-    const contentLoadedPromise: Promise<void> = contentLoaded.then(async () => {
-        mctsConnectFour = await importPromiseMctsConnectFour();
-    });
-    Promise.all([loaded, contentLoadedPromise]).then(() => {
-        const phaserGame = new MctsConnectFourGame(mctsConnectFour);
+    loaded.then(() => {
+        const phaserGame = new MctsConnectFourGame();
         console.log([phaserGame]);
     });
 })();

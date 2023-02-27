@@ -23,21 +23,14 @@ use serde::ser::Serialize;
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct Action(connect_four_logic::Move);
+pub struct Action(pub connect_four_logic::Move);
 
 impl Serialize for Action {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        match self.0 {
-            connect_four_logic::Move::Insert(col) => {
-                serializer.serialize_str(&format!("Insert({})", col))
-            }
-            connect_four_logic::Move::Pop(col) => {
-                serializer.serialize_str(&format!("Pop({})", col))
-            }
-        }
+        self.0.serialize(serializer)
     }
 }
 
@@ -86,6 +79,34 @@ impl State {
             who_am_i,
         }
     }
+
+    pub fn apply_move(&mut self, action: &Action) {
+        let player = match self.turn {
+            Player::Player1 => connect_four_logic::Player::Player1,
+            Player::Player2 => connect_four_logic::Player::Player2,
+        };
+        match &action.0.move_type {
+            connect_four_logic::MoveType::Insert => {
+                self.board
+                    .insert(action.0.column, player)
+                    .expect("Invalid move");
+            }
+            connect_four_logic::MoveType::Pop => {
+                self.board
+                    .pop(action.0.column, player)
+                    .expect("Invalid move");
+            }
+        }
+
+        match self.turn {
+            Player::Player1 => {
+                self.turn = Player::Player2;
+            }
+            Player::Player2 => {
+                self.turn = Player::Player1;
+            }
+        }
+    }
 }
 
 impl monte_carlo_tree_search::State<Action> for State {
@@ -119,12 +140,18 @@ impl monte_carlo_tree_search::State<Action> for State {
             Player::Player1 => connect_four_logic::Player::Player1,
             Player::Player2 => connect_four_logic::Player::Player2,
         };
-        match action {
-            Action(connect_four_logic::Move::Insert(col)) => {
-                next_state.board.insert(*col, player).expect("Invalid move");
+        match &action.0.move_type {
+            connect_four_logic::MoveType::Insert => {
+                next_state
+                    .board
+                    .insert(action.0.column, player)
+                    .expect("Invalid move");
             }
-            Action(connect_four_logic::Move::Pop(col)) => {
-                next_state.board.pop(*col, player).expect("Invalid move");
+            connect_four_logic::MoveType::Pop => {
+                next_state
+                    .board
+                    .pop(action.0.column, player)
+                    .expect("Invalid move");
             }
         }
 
@@ -170,12 +197,12 @@ fn playout(
         let mut used_winning_move = false;
         for m in moves.iter() {
             let mut board_copy = board.clone();
-            match m {
-                connect_four_logic::Move::Insert(col) => {
-                    board_copy.insert(*col, current_player).unwrap();
+            match &m.move_type {
+                connect_four_logic::MoveType::Insert => {
+                    board_copy.insert(m.column, current_player).unwrap();
                 }
-                connect_four_logic::Move::Pop(col) => {
-                    board_copy.pop(*col, current_player).unwrap();
+                connect_four_logic::MoveType::Pop => {
+                    board_copy.pop(m.column, current_player).unwrap();
                 }
             }
             if connect_four_logic::is_terminal_position(&board_copy)
@@ -193,12 +220,12 @@ fn playout(
         }
 
         let random_move = moves.choose(rng).unwrap();
-        match random_move {
-            connect_four_logic::Move::Insert(col) => {
-                board.insert(*col, current_player).unwrap();
+        match random_move.move_type {
+            connect_four_logic::MoveType::Insert => {
+                board.insert(random_move.column, current_player).unwrap();
             }
-            connect_four_logic::Move::Pop(col) => {
-                board.pop(*col, current_player).unwrap();
+            connect_four_logic::MoveType::Pop => {
+                board.pop(random_move.column, current_player).unwrap();
             }
         }
         depth += 1;
