@@ -18,8 +18,9 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use monte_carlo_tree_search::State as MctsState;
 use rand::prelude::SliceRandom;
-use serde::ser::Serialize;
+use serde::ser::{Serialize, SerializeStruct};
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -51,11 +52,29 @@ impl From<Player> for connect_four_logic::Player {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct State {
     pub board: connect_four_logic::Board,
     pub turn: Player,
     pub who_am_i: Player,
+}
+
+// implement Serialize for State, but add an additional field that calls is_terminal
+impl Serialize for State {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("State", 4)?;
+        state.serialize_field("board", &self.board)?;
+        state.serialize_field("turn", &self.turn)?;
+        state.serialize_field("who_am_i", &self.who_am_i)?;
+        state.serialize_field(
+            "is_terminal_position",
+            &connect_four_logic::is_terminal_position(&self.board),
+        )?;
+        state.end()
+    }
 }
 
 impl std::fmt::Display for State {

@@ -281,7 +281,7 @@ pub fn get_legal_moves(board: &Board, player: Player) -> Vec<Move> {
 }
 
 /// Whether a position is terminal, and if so, who won.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TerminalPosition {
     /// The game is terminal, and some Player has won.
     IsTerminalWin(Player),

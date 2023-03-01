@@ -13,15 +13,9 @@
     <%= require('html-loader!./template/header.html').default %>
         <main>
         <div class="container-fluid">
-            <div class="px-4 my-5 text-center">
-                <h2>Howdy</h2>
-                <div class="col-lg-6 mx-auto">
-                    <p class="lead mb-4">This is a Bootstrap template. Eidt me!</p>
-                    <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
-                        <a class="btn btn-primary btn-lg px-4 me-sm-3" href="/link1">Link #1</a>
-                        <a class="btn btn-secondary btn-lg px-4 me-sm-3" href="/link2">Link #2</a>
-                        <a class="btn btn-outline-secondary btn-lg px-4" href="/link3">Link #3</a>
-                    </div>
+            <div class="row mt-3">
+                <div class="col-12">
+                    <h1>Monte Carlo Tree Search - Connect 4</h1>
                 </div>
             </div>
 
@@ -31,6 +25,13 @@
                     <div class="spinner-border spinner-border-sm" role="status">
                     </div>
                     <span id="cpu-thinking-text">CPU is thinking...</span>
+                </div>
+            </div>
+
+            <!-- Row for game status text, will be filled if game is finished. -->
+            <div class="row" id="game-status">
+                <div class="col-12">
+                    <span id="game-status-text"></span>
                 </div>
             </div>
 

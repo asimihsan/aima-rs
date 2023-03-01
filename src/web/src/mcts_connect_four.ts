@@ -16,6 +16,8 @@
 
 // @ts-ignore
 import Phaser from 'phaser';
+import { ClickDebouncer } from './pkg_mcts_connect_four';
+import PauseRenderPlugin from './pause_render_plugin';
 
 const importPromise = import('./pkg_mcts_connect_four/mcts_connect_four');
 
@@ -31,6 +33,7 @@ enum ScenePlayer {
 enum GameState {
     CpuTurn,
     HumanTurn,
+    GameOver,
 }
 
 enum GameStateInput {
@@ -38,13 +41,13 @@ enum GameStateInput {
     CpuFinishedThinking,
 }
 
-class Cell {
-    row: number;
-    column: number;
+class Token {
+    player: ScenePlayer;
+    object: Phaser.GameObjects.Ellipse;
 
-    constructor(row: number, column: number) {
-        this.row = row;
-        this.column = column;
+    constructor(player: ScenePlayer, object: Phaser.GameObjects.Ellipse) {
+        this.player = player;
+        this.object = object;
     }
 }
 
@@ -61,13 +64,15 @@ class MyScene extends Phaser.Scene {
     // squarePaddingPx is the padding between each square in the board.
     squarePaddingPx: number;
 
+    // heightPx is the total height of the board in pixels.
+    heightPx: number;
+
     // backgroundRects is an array of Phaser.GameObjects.Rectangle that are used to draw the board. Tokens for players
     // will be drawn on top of these.
     backgroundRects: Phaser.GameObjects.Rectangle[];
 
-    player1Tokens: Phaser.GameObjects.Ellipse[];
+    playerTokens: Token[];
     player1Color: number = 0x0000ff;
-    player2Tokens: Phaser.GameObjects.Ellipse[];
     player2color: number = 0xff0000;
 
     // Unnecessary fields that are inehrited but needed to make eslint happy.
@@ -78,8 +83,8 @@ class MyScene extends Phaser.Scene {
     // constructor that takes a config object and populates fields.
     constructor(
         {
-            width = 800,
-            height = 600,
+            width = 7,
+            height = 6,
             squareSizePx = 100,
             squarePaddingPx = 10,
         } = {},
@@ -90,13 +95,12 @@ class MyScene extends Phaser.Scene {
         this.squareSizePx = squareSizePx;
         this.squarePaddingPx = squarePaddingPx;
         this.backgroundRects = [];
-        this.player1Tokens = [];
-        this.player2Tokens = [];
+        this.playerTokens = [];
+        this.heightPx = this.height * (this.squareSizePx + this.squarePaddingPx) + this.squarePaddingPx;
 
         for (let i = 0; i < this.width * this.height; i += 1) {
             this.backgroundRects.push(null);
-            this.player1Tokens.push(null);
-            this.player2Tokens.push(null);
+            this.playerTokens.push(null);
         }
     }
 
@@ -124,20 +128,16 @@ class MyScene extends Phaser.Scene {
         return this.backgroundRects[col * this.width + row];
     }
 
-    getPlayer1Token(row: number, col: number): Phaser.GameObjects.Ellipse {
-        return this.player1Tokens[col * this.width + row];
+    getPlayerToken(row: number, col: number): Token | null {
+        return this.playerTokens[col * this.width + row];
     }
 
-    setPlayer1Token(row: number, col: number, object: Phaser.GameObjects.Ellipse) {
-        this.player1Tokens[col * this.width + row] = object;
+    setPlayerToken(row: number, col: number, object: Phaser.GameObjects.Ellipse, player: ScenePlayer) {
+        this.playerTokens[col * this.width + row] = new Token(player, object);
     }
 
-    getPlayer2Token(row: number, col: number): Phaser.GameObjects.Ellipse {
-        return this.player2Tokens[col * this.width + row];
-    }
-
-    setPlayer2Token(row: number, col: number, object: Phaser.GameObjects.Ellipse) {
-        this.player2Tokens[col * this.width + row] = object;
+    clearPlayerToken(row: number, col: number) {
+        this.playerTokens[col * this.width + row] = null;
     }
 
     renderInsert(player: ScenePlayer, row: number, col: number) {
@@ -157,39 +157,72 @@ class MyScene extends Phaser.Scene {
             ease: 'Bounce.easeOut',
         });
 
-        if (player === ScenePlayer.Player1) {
-            this.setPlayer1Token(row, col, token);
-        } else if (player === ScenePlayer.Player2) {
-            this.setPlayer2Token(row, col, token);
+        this.setPlayerToken(row, col, token, player);
+    }
+
+    // renderPop removes the bottom-most token in the column. It then moves each token above it down by one row.
+    // Build up all the tween options needed and then call this.tweens.add with the options.
+    renderPop(col: number) {
+        this.tweens.pauseAll();
+        for (let row = this.height - 1; row >= 0; row -= 1) {
+            const token = this.getPlayerToken(row, col);
+            if (token == null) {
+                break;
+            }
+            let y: number;
+            if (row === this.height - 1) {
+                y = this.heightPx;
+                this.clearPlayerToken(row, col);
+                this.tweens.add({
+                    targets: token.object,
+                    y,
+                    duration: 200,
+                    ease: 'Bounce.easeOut',
+                }).on('complete', () => {
+                    token.object.destroy();
+                });
+            } else {
+                const rect = this.getBackgroundRect(row + 1, col);
+                y = rect.y;
+                this.setPlayerToken(row + 1, col, token.object, token.player);
+                this.tweens.add({
+                    targets: token.object,
+                    y,
+                    duration: 800,
+                    ease: 'Bounce.easeOut',
+                });
+            }
         }
+        this.tweens.resumeAll();
     }
 
     clearMouseEventHandlers() {
         for (let i = 0; i < this.backgroundRects.length; i += 1) {
-            if (this.backgroundRects[i] !== null) {
-                this.backgroundRects[i].setStrokeStyle(0);
-                this.backgroundRects[i].removeInteractive();
+            const rect = this.backgroundRects[i];
+            if (rect != null) {
+                rect.setStrokeStyle(0).removeInteractive().removeAllListeners();
             }
         }
-        for (let i = 0; i < this.player1Tokens.length; i += 1) {
-            if (this.player1Tokens[i] !== null) {
-                this.player1Tokens[i].removeInteractive();
-            }
-        }
-        for (let i = 0; i < this.player2Tokens.length; i += 1) {
-            if (this.player2Tokens[i] !== null) {
-                this.player2Tokens[i].removeInteractive();
+        for (let i = 0; i < this.playerTokens.length; i += 1) {
+            if (this.playerTokens[i] != null) {
+                this.playerTokens[i].object.removeInteractive();
             }
         }
     }
 
-    setCellAsInteractive(row: number, column: number, callback: () => void) {
+    setCellAsInteractive(
+        row: number,
+        column: number,
+        moveType: string,
+        callback: (row: number, column: number, moveType: string) => void,
+    ) {
         const rect = this.getBackgroundRect(row, column);
         rect.setInteractive();
 
         // on mouseover, show stroke
         rect.on('pointerover', () => {
             rect.setStrokeStyle(4, 0x000000);
+            console.log(`row: ${row}, column: ${column}, moveType: ${moveType}`);
         });
 
         rect.on('pointerout', () => {
@@ -198,7 +231,7 @@ class MyScene extends Phaser.Scene {
 
         // on mouseclick, call callback
         rect.on('pointerdown', () => {
-            callback();
+            callback(row, column, moveType);
         });
     }
 }
@@ -306,16 +339,22 @@ class GameWorker {
 
 export class MctsConnectFourGame {
     cpuThinking: HTMLElement;
+    gameStatus: HTMLElement;
     gameState: GameState;
 
     gameWorker: GameWorker;
     scene: MyScene;
     game: Phaser.Game;
 
-    cellEventBlocklist: Set<Cell>;
+    clickDebouncer: ClickDebouncer;
 
     constructor() {
         this.cpuThinking = document.getElementById('cpu-thinking');
+        this.hideCpuIsThinking();
+
+        this.gameStatus = document.getElementById('game-status');
+        this.hideGameStatus();
+
         this.gameWorker = new GameWorker();
         this.scene = new MyScene({
             width: 7,
@@ -333,12 +372,20 @@ export class MctsConnectFourGame {
                 mode: Phaser.Scale.NO_ZOOM,
                 autoCenter: Phaser.Scale.CENTER_BOTH,
             },
+            plugins: {
+                global: [
+                    { key: 'PhaserPauseRenderPlugin', plugin: PauseRenderPlugin, mapping: 'render' },
+                ],
+            },
             scene: [this.scene],
         });
 
         this.gameState = GameState.CpuTurn;
-        this.cellEventBlocklist = new Set();
-        this.changeState(GameStateInput.CpuStartThinking);
+
+        import('./pkg_mcts_connect_four/mcts_connect_four').then((module) => {
+            this.clickDebouncer = new module.ClickDebouncer();
+            this.changeState(GameStateInput.CpuStartThinking);
+        });
     }
 
     showCpuIsThinking(): void {
@@ -349,6 +396,17 @@ export class MctsConnectFourGame {
     hideCpuIsThinking(): void {
         this.cpuThinking.classList.remove('visible');
         this.cpuThinking.classList.add('invisible');
+    }
+
+    showGameStatus(text: string): void {
+        this.gameStatus.classList.remove('invisible');
+        this.gameStatus.classList.add('visible');
+        this.gameStatus.innerText = text;
+    }
+
+    hideGameStatus(): void {
+        this.gameStatus.classList.remove('visible');
+        this.gameStatus.classList.add('invisible');
     }
 
     async waitForCpuTurn(): Promise<void> {
@@ -369,7 +427,7 @@ export class MctsConnectFourGame {
         case GameState.CpuTurn:
             if (gameStateInput === GameStateInput.CpuStartThinking) {
                 this.scene.clearMouseEventHandlers();
-                this.cellEventBlocklist.clear();
+                this.clickDebouncer.clear();
                 this.gameState = GameState.CpuTurn;
                 this.showCpuIsThinking();
                 const bestMove = await this.gameWorker.getBestMove();
@@ -378,11 +436,28 @@ export class MctsConnectFourGame {
 
                 const moveType = bestMove.actual_move.move_type;
                 const col = bestMove.actual_move.column;
-                await this.gameWorker.applyMove(moveType, col);
+                const newState = await this.gameWorker.applyMove(moveType, col);
+                console.log('newState');
+                console.log(newState);
 
                 if (moveType === 'Insert') {
                     const row = bestMove.maybe_insert_row;
                     this.scene.renderInsert(ScenePlayer.Player1, row, col);
+                } else {
+                    this.scene.renderPop(col);
+                }
+
+                if (newState.is_terminal_position !== 'IsNotTerminal') {
+                    this.gameState = GameState.GameOver;
+                    this.hideCpuIsThinking();
+                    if (newState.is_terminal_position.IsTerminalWin === 'Player1') {
+                        this.showGameStatus('Player 1 won!');
+                    } else if (newState.is_terminal_position.IsTerminalWin === 'Player2') {
+                        this.showGameStatus('Player 2 won!');
+                    } else {
+                        this.showGameStatus('Draw!');
+                    }
+                    return;
                 }
 
                 await this.changeState(GameStateInput.CpuFinishedThinking);
@@ -395,25 +470,50 @@ export class MctsConnectFourGame {
                 // for each move, call setCellAsInteractive.
                 for (let i = 0; i < legalMoves.moves.length; i += 1) {
                     const move = legalMoves.moves[i];
-                    this.scene.setCellAsInteractive(move.row, move.column, async () => {
-                        console.log(this.cellEventBlocklist);
-                        const cell = new Cell(move.row, move.column);
-                        if (this.cellEventBlocklist.has(cell)) {
-                            console.log('debounce');
-                            return;
-                        }
-                        this.cellEventBlocklist.add(cell);
-                        console.log('Human clicked on cell');
-                        console.log(move.row);
-                        console.log(move.column);
+                    console.log('setting up legal moves');
+                    console.log(move);
+                    this.scene.setCellAsInteractive(
+                        move.row,
+                        move.column,
+                        move.move_type,
+                        async (row: number, column: number, moveType: string) => {
+                            if (this.clickDebouncer.is_present(row, column)) {
+                                console.log('debounce');
+                                return;
+                            }
+                            this.clickDebouncer.add(row, column);
+                            console.log('Human clicked on cell');
+                            console.log(moveType);
+                            console.log(row);
+                            console.log(column);
 
-                        await this.gameWorker.applyMove(move.move_type, move.column);
-                        if (move.move_type === 'Insert') {
-                            this.scene.renderInsert(ScenePlayer.Player2, move.row, move.column);
-                        }
-                        this.gameState = GameState.CpuTurn;
-                        this.waitForCpuTurn();
-                    });
+                            const newState = await this.gameWorker.applyMove(moveType, column);
+                            console.log('newState');
+                            console.log(newState);
+
+                            if (moveType === 'Insert') {
+                                this.scene.renderInsert(ScenePlayer.Player2, row, column);
+                            } else {
+                                this.scene.renderPop(column);
+                            }
+
+                            if (newState.is_terminal_position !== 'IsNotTerminal') {
+                                this.gameState = GameState.GameOver;
+                                this.hideCpuIsThinking();
+                                if (newState.is_terminal_position.IsTerminalWin === 'Player1') {
+                                    this.showGameStatus('Player 1 won!');
+                                } else if (newState.is_terminal_position.IsTerminalWin === 'Player2') {
+                                    this.showGameStatus('Player 2 won!');
+                                } else {
+                                    this.showGameStatus('Draw!');
+                                }
+                                return;
+                            }
+
+                            this.gameState = GameState.CpuTurn;
+                            this.waitForCpuTurn();
+                        },
+                    );
                 }
             }
             break;

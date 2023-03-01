@@ -15,6 +15,7 @@
  */
 
 use std::cell::RefCell;
+use std::collections::BTreeSet;
 use std::rc::Rc;
 
 use rand_core::SeedableRng;
@@ -200,5 +201,32 @@ impl GameWrapper {
             .collect();
         let result = LegalMoveResponse { moves };
         serde_wasm_bindgen::to_value(&result).unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub struct ClickDebouncer {
+    clicks: BTreeSet<(usize, usize)>,
+}
+
+#[wasm_bindgen]
+impl ClickDebouncer {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self {
+            clicks: BTreeSet::new(),
+        }
+    }
+
+    pub fn add(&mut self, row: usize, col: usize) {
+        self.clicks.insert((row, col));
+    }
+
+    pub fn is_present(&self, row: usize, col: usize) -> bool {
+        self.clicks.contains(&(row, col))
+    }
+
+    pub fn clear(&mut self) {
+        self.clicks.clear();
     }
 }
