@@ -337,10 +337,67 @@ class GameWorker {
     }
 }
 
+class DebugTrees {
+    // data is a list of objects. The list size is the number of iterations for which MCTS ran.
+    // Each object has fields (action, children, visits, wins). Children are more of the same.
+    data: Array<any>;
+
+    currentIteration: number;
+    treeContainer: HTMLElement;
+
+    constructor() {
+        this.data = [];
+        this.currentIteration = 0;
+        this.treeContainer = document.getElementById('tree-container');
+    }
+
+    setData(data: Array<any>) {
+        this.data = data;
+        this.currentIteration = 0;
+        this.render();
+    }
+
+    render() {
+        const currentTree = this.data[this.currentIteration];
+
+        // get pretty JSON string, set treeContainer to it
+        const json = JSON.stringify(currentTree, null, 2);
+        this.treeContainer.innerHTML = json;
+    }
+
+    nextIteration() {
+        const maxIterations = this.data.length;
+        this.currentIteration += 1;
+        if (this.currentIteration >= maxIterations) {
+            this.currentIteration = maxIterations - 1;
+        }
+        this.render();
+    }
+
+    previousIteration() {
+        this.currentIteration -= 1;
+        if (this.currentIteration < 0) {
+            this.currentIteration = 0;
+        }
+        this.render();
+    }
+
+    lastIteration() {
+        this.currentIteration = this.data.length - 1;
+        this.render();
+    }
+
+    firstIteration() {
+        this.currentIteration = 0;
+        this.render();
+    }
+}
+
 export class MctsConnectFourGame {
     cpuThinking: HTMLElement;
     gameStatus: HTMLElement;
     gameState: GameState;
+    debugTrees: DebugTrees;
 
     gameWorker: GameWorker;
     scene: MyScene;
@@ -354,6 +411,8 @@ export class MctsConnectFourGame {
 
         this.gameStatus = document.getElementById('game-status');
         this.hideGameStatus();
+
+        this.debugTrees = new DebugTrees();
 
         this.gameWorker = new GameWorker();
         this.scene = new MyScene({
@@ -433,6 +492,7 @@ export class MctsConnectFourGame {
                 const bestMove = await this.gameWorker.getBestMove();
                 console.log('bestMove');
                 console.log(bestMove);
+                this.debugTrees.setData(bestMove.debug_trees);
 
                 const moveType = bestMove.actual_move.move_type;
                 const col = bestMove.actual_move.column;

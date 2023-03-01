@@ -10,43 +10,68 @@
 </head>
 
 <body data-instant-intensity="viewport-all">
-    <%= require('html-loader!./template/header.html').default %>
-        <main>
-        <div class="container-fluid">
-            <div class="row mt-3">
-                <div class="col-12">
-                    <h1>Monte Carlo Tree Search - Connect 4</h1>
-                </div>
+<%= require('html-loader!./template/header.html').default %>
+<main>
+    <div class="container-fluid">
+        <div class="row mt-3">
+            <div class="col-12">
+                <h1>Monte Carlo Tree Search - Connect 4</h1>
             </div>
-
-            <!-- Row with spinner and text "CPU is thinking.." -->
-            <div class="row" id="cpu-thinking">
-                <div class="col-12">
-                    <div class="spinner-border spinner-border-sm" role="status">
-                    </div>
-                    <span id="cpu-thinking-text">CPU is thinking...</span>
-                </div>
-            </div>
-
-            <!-- Row for game status text, will be filled if game is finished. -->
-            <div class="row" id="game-status">
-                <div class="col-12">
-                    <span id="game-status-text"></span>
-                </div>
-            </div>
-
-            <div class="row">
-                <div class="col-6">
-                    <div id="game"></div>
-                </div>
-                <div class="col-6">
-                    <div id="tree"></div>
-                </div>
-            </div>
-
         </div>
-    </main>
-    <%= require('html-loader!./template/footer.html').default %>
+
+        <!-- Row with spinner and text "CPU is thinking.." -->
+        <div class="row" id="cpu-thinking">
+            <div class="col-12">
+                <div class="spinner-border spinner-border-sm" role="status">
+                </div>
+                <span id="cpu-thinking-text">CPU is thinking...</span>
+            </div>
+        </div>
+
+        <!-- Row for game status text, will be filled if game is finished. -->
+        <div class="row" id="game-status">
+            <div class="col-12">
+                <span id="game-status-text"></span>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-6">
+                <div id="game"></div>
+            </div>
+            <div class="col-6">
+                <div class="row">
+                    <!-- Four buttons, 1) first, 2) previous, 3) next, 4) last, with appropriate bootstrap icons and text -->
+                    <div class="col-12">
+                        <button type="button" class="btn btn-primary" id="first">
+                            <i class="fas fa-fast-backward"></i>
+                            <span>First</span>
+                        </button>
+                        <button type="button" class="btn btn-primary" id="previous">
+                            <i class="fas fa-backward"></i>
+                            <span>Previous</span>
+                        </button>
+                        <button type="button" class="btn btn-primary" id="next">
+                            <span>Next</span>
+                            <i class="fas fa-forward"></i>
+                        </button>
+                        <button type="button" class="btn btn-primary" id="last">
+                            <span>Last</span>
+                            <i class="fas fa-fast-forward"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="row">
+                    <pre>
+                    <div id="tree-container"></div>
+                    </pre>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</main>
+<%= require('html-loader!./template/footer.html').default %>
 </body>
 
 </html>
