@@ -16,9 +16,8 @@
 
 use std::cell::RefCell;
 use std::fmt::{Debug, Display};
-use std::fs::File;
 use std::hash::Hash;
-use std::io::{BufWriter, Write};
+use std::io::Write;
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -73,15 +72,15 @@ impl<_State: State<_Action>, _Action: Action> MctsNode<_State, _Action> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 struct MctsTree<_State: State<_Action>, _Action: Action> {
     nodes: slotmap::SlotMap<MctsNodeKey, MctsNode<_State, _Action>>,
     root: MctsNodeKey,
     root_state: _State,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct MctsNodeForSerialization<_State: State<_Action>, _Action: Action> {
+#[derive(Debug, Clone, Serialize)]
+pub struct MctsNodeForSerialization<_State: State<_Action>, _Action: Action> {
     action: Option<_Action>,
     visits: Int,
     wins: Int,
@@ -288,7 +287,7 @@ pub enum IterationLimitKind {
     TimeSeconds(Duration),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DebugTrackTrees {
     None,
     Track,
@@ -310,11 +309,15 @@ pub struct MctsArgs {
     pub debug_track_trees: DebugTrackTrees,
 }
 
-// Mcts is the main Monte Carlo Tree Search algorithm.
-// See section 5.4 Monte Carlo Tree Search page 162 and 163.
+/// Mcts is the main Monte Carlo Tree Search algorithm.
+/// See section 5.4 Monte Carlo Tree Search page 162 and 163.
 pub struct Mcts<_State: State<_Action>, _Action: Action> {
     tree: Rc<RefCell<MctsTree<_State, _Action>>>,
     args: MctsArgs,
+
+    /// If debug_track_trees is true, this is the list of trees that we have tracked. Each
+    /// element is a tree at a different iteration.
+    debug_trees: Option<Vec<MctsNodeForSerialization<_State, _Action>>>,
 }
 
 impl<_State, _Action> Mcts<_State, _Action>
@@ -328,31 +331,28 @@ where
 
     // useful for tests
     fn new_from_tree(tree: MctsTree<_State, _Action>, args: MctsArgs) -> Self {
+        let debug_trees = match args.debug_track_trees {
+            DebugTrackTrees::None => None,
+            DebugTrackTrees::Track => Some(vec![]),
+        };
         Self {
             tree: Rc::new(RefCell::new(tree)),
             args,
+            debug_trees,
         }
     }
 
-    fn serialize_tree(&self) -> String {
+    fn serialize_tree(&self) -> MctsNodeForSerialization<_State, _Action> {
         let tree = Rc::clone(&self.tree);
         let tree = tree.borrow();
         let tree = tree.deref();
-        let serialized_tree =
-            create_tree_for_serialization(tree, tree.get_root_nodekey(), None /*action*/);
-        let output = serde_json::to_string_pretty(&serialized_tree);
-        output.unwrap()
+        create_tree_for_serialization(tree, tree.get_root_nodekey(), None /*action*/)
     }
 
-    fn maybe_dump_tree(&self, iteration: Int) {
-        if let Some(tree_dump_dir) = &self.args.tree_dump_dir {
+    fn maybe_dump_tree(&mut self, iteration: Int) {
+        if self.args.debug_track_trees == DebugTrackTrees::Track {
             let tree = self.serialize_tree();
-
-            let filename = format!("tree-{:03}.json", iteration);
-            let path = tree_dump_dir.join(filename);
-            let file = File::create(path).unwrap();
-            let mut file = BufWriter::new(file);
-            file.write_all(tree.as_bytes()).unwrap();
+            self.debug_trees.as_mut().unwrap().push(tree);
         }
     }
 
@@ -489,6 +489,10 @@ where
             }
         }
         best_action
+    }
+
+    pub fn debug_trees(&self) -> Option<Vec<MctsNodeForSerialization<_State, _Action>>> {
+        self.debug_trees.as_ref().cloned()
     }
 }
 
@@ -785,6 +789,7 @@ mod tests {
         assert_eq!(best_action.unwrap(), MyAction::Up);
 
         let serialized_tree = mcts.serialize_tree();
+        let serialized_tree = serde_json::to_string_pretty(&serialized_tree).unwrap();
         println!("serialized tree: {}", serialized_tree);
     }
 }

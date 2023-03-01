@@ -18,7 +18,6 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use monte_carlo_tree_search::State as MctsState;
 use rand::prelude::SliceRandom;
 use serde::ser::{Serialize, SerializeStruct};
 use serde_derive::{Deserialize, Serialize};
@@ -307,11 +306,17 @@ impl Default for MctsConfig {
     }
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct BestMctsMove {
+    pub actual_move: connect_four_logic::Move,
+    pub debug_trees: Option<Vec<monte_carlo_tree_search::MctsNodeForSerialization<State, Action>>>,
+}
+
 pub fn get_best_mcts_move(
     state: &State,
     config: &MctsConfig,
     rng: Rc<RefCell<rand_pcg::Pcg64>>,
-) -> connect_four_logic::Move {
+) -> BestMctsMove {
     let mut mcts = monte_carlo_tree_search::Mcts::<State, Action>::new(
         state.clone(),
         monte_carlo_tree_search::MctsArgs {
@@ -329,7 +334,10 @@ pub fn get_best_mcts_move(
 
     mcts.run();
     let best_move = mcts.best_action().unwrap();
-    println!("best move: {:?}", best_move);
+    let debug_trees = mcts.debug_trees();
 
-    best_move.0
+    BestMctsMove {
+        actual_move: best_move.0,
+        debug_trees,
+    }
 }

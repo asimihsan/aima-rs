@@ -49,10 +49,16 @@ pub struct Move {
     pub column: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct MoveResponse {
     pub actual_move: Move,
     pub maybe_insert_row: Option<usize>,
+    pub debug_trees: Vec<
+        monte_carlo_tree_search::MctsNodeForSerialization<
+            mcts_connect_four::State,
+            mcts_connect_four::Action,
+        >,
+    >,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -94,6 +100,7 @@ impl GameWrapper {
         let state = mcts_connect_four::State::new(width, height, turn, who_am_i);
         let mcts_config = mcts_connect_four::MctsConfig {
             tree_dump_dir: None,
+            debug_track_trees: monte_carlo_tree_search::DebugTrackTrees::Track,
             ..mcts_connect_four::MctsConfig::default()
         };
         let rng = Rc::new(RefCell::new(rand_pcg::Pcg64::seed_from_u64(42)));
@@ -134,22 +141,28 @@ impl GameWrapper {
         );
 
         // If this is an insert, then use can_insert to get the row.
-        let response = if action.move_type == connect_four_logic::MoveType::Insert {
-            let maybe_insert_row = self.state.board.can_insert(action.column).unwrap();
+        let response = if action.actual_move.move_type == connect_four_logic::MoveType::Insert {
+            let maybe_insert_row = self
+                .state
+                .board
+                .can_insert(action.actual_move.column)
+                .unwrap();
             MoveResponse {
                 actual_move: Move {
                     move_type: MoveType::Insert,
-                    column: action.column,
+                    column: action.actual_move.column,
                 },
                 maybe_insert_row: Some(maybe_insert_row),
+                debug_trees: action.debug_trees.unwrap(),
             }
         } else {
             MoveResponse {
                 actual_move: Move {
                     move_type: MoveType::Pop,
-                    column: action.column,
+                    column: action.actual_move.column,
                 },
                 maybe_insert_row: None,
+                debug_trees: action.debug_trees.unwrap(),
             }
         };
         Ok(serde_wasm_bindgen::to_value(&response).unwrap())

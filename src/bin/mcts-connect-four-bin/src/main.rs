@@ -62,7 +62,7 @@ fn main() {
                 _ => panic!("invalid action"),
             }
         } else {
-            mcts_connect_four::get_best_mcts_move(&state, &mcts_config, Rc::clone(&rng))
+            mcts_connect_four::get_best_mcts_move(&state, &mcts_config, Rc::clone(&rng)).actual_move
         };
 
         let player = match state.turn {
@@ -135,9 +135,9 @@ mod tests {
         let best_move =
             mcts_connect_four::get_best_mcts_move(&state, &mcts_config, Rc::clone(&rng));
 
-        match best_move.move_type {
+        match best_move.actual_move.move_type {
             connect_four_logic::MoveType::Insert => {
-                assert!(best_move.column == 2 || best_move.column == 5);
+                assert!(best_move.actual_move.column == 2 || best_move.actual_move.column == 5);
             }
             _ => panic!("expected insert"),
         }
