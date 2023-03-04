@@ -122,7 +122,7 @@ module.exports = {
             ],
         }),
         new HtmlWebpackPlugin({
-            title: 'Rust WASM Webpack Example',
+            title: 'Monte Carlo Tree Search - Connect 4',
             template: path.resolve(__dirname, 'src', 'index.html'),
             filename: 'index.html',
             chunks: ['index'],

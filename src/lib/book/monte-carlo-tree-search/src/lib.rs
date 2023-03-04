@@ -102,7 +102,7 @@ fn create_tree_for_serialization<_State: State<_Action>, _Action: Action>(
         .iter()
         .map(|(action, child)| Box::new(create_tree_for_serialization(tree, *child, Some(*action))))
         .collect();
-    children.sort_unstable_by(|a, b| a.visits.cmp(&b.visits).reverse());
+    children.sort_unstable_by_key(|child| (-child.visits, -child.wins));
 
     MctsNodeForSerialization {
         action,

@@ -345,10 +345,27 @@ class DebugTrees {
     currentIteration: number;
     treeContainer: HTMLElement;
 
-    constructor() {
+    constructor(
+        firstButton: HTMLButtonElement,
+        previousButton: HTMLButtonElement,
+        nextButton: HTMLButtonElement,
+        lastButton: HTMLButtonElement,
+    ) {
         this.data = [];
         this.currentIteration = 0;
         this.treeContainer = document.getElementById('tree-container');
+        firstButton.addEventListener('click', () => {
+            this.firstIteration();
+        });
+        previousButton.addEventListener('click', () => {
+            this.previousIteration();
+        });
+        nextButton.addEventListener('click', () => {
+            this.nextIteration();
+        });
+        lastButton.addEventListener('click', () => {
+            this.lastIteration();
+        });
     }
 
     setData(data: Array<any>) {
@@ -357,12 +374,16 @@ class DebugTrees {
         this.render();
     }
 
+    // eslint-disable-next-line class-methods-use-this
     render() {
         const currentTree = this.data[this.currentIteration];
-
-        // get pretty JSON string, set treeContainer to it
         const json = JSON.stringify(currentTree, null, 2);
         this.treeContainer.innerHTML = json;
+
+        // const currentTree = this.data[this.currentIteration];
+        // const svg = d3.select('#tree-container').append('svg');
+        // const treemap = d3.tree().size([100, 100]);
+        // const root = d3.hierarchy(currentTree, (d) => d.children);
     }
 
     nextIteration() {
@@ -398,6 +419,10 @@ export class MctsConnectFourGame {
     gameStatus: HTMLElement;
     gameState: GameState;
     debugTrees: DebugTrees;
+    firstButton: HTMLButtonElement;
+    previousButton: HTMLButtonElement;
+    nextButton: HTMLButtonElement;
+    lastButton: HTMLButtonElement;
 
     gameWorker: GameWorker;
     scene: MyScene;
@@ -412,7 +437,11 @@ export class MctsConnectFourGame {
         this.gameStatus = document.getElementById('game-status');
         this.hideGameStatus();
 
-        this.debugTrees = new DebugTrees();
+        this.firstButton = document.getElementById('first-button') as HTMLButtonElement;
+        this.previousButton = document.getElementById('previous-button') as HTMLButtonElement;
+        this.nextButton = document.getElementById('next-button') as HTMLButtonElement;
+        this.lastButton = document.getElementById('last-button') as HTMLButtonElement;
+        this.debugTrees = new DebugTrees(this.firstButton, this.previousButton, this.nextButton, this.lastButton);
 
         this.gameWorker = new GameWorker();
         this.scene = new MyScene({
@@ -429,7 +458,7 @@ export class MctsConnectFourGame {
                 width: 800,
                 height: 600,
                 mode: Phaser.Scale.NO_ZOOM,
-                autoCenter: Phaser.Scale.CENTER_BOTH,
+                autoCenter: Phaser.Scale.CENTER_HORIZONTALLY,
             },
             plugins: {
                 global: [
