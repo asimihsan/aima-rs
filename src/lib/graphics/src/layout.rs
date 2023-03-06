@@ -14,6 +14,7 @@
  * with this program. If not, see <https://www.gnu.org/licenses/>
  */
 
+use std::cell::RefCell;
 use std::fmt::Debug;
 
 use slotmap::new_key_type;
@@ -81,7 +82,7 @@ where
     _Data: Data,
 {
     root: NodeKey,
-    nodes: slotmap::SlotMap<NodeKey, Node<_Data>>,
+    nodes: RefCell<slotmap::SlotMap<NodeKey, Node<_Data>>>,
 }
 
 impl<_Data: Data> Tree<_Data> {
@@ -91,13 +92,14 @@ impl<_Data: Data> Tree<_Data> {
         let root_key = nodes.insert(root);
         Tree {
             root: root_key,
-            nodes,
+            nodes: RefCell::new(nodes),
         }
     }
 
     fn add_child(&mut self, parent: NodeKey, child: Node<_Data>) -> NodeKey {
-        let child_key = self.nodes.insert(child);
-        let mut parent_node = self.nodes.get_mut(parent).unwrap();
+        let child_key = self.nodes.borrow_mut().insert(child);
+        let mut nodes_mut = self.nodes.borrow_mut();
+        let mut parent_node = nodes_mut.get_mut(parent).unwrap();
         parent_node.children.push(child_key);
         child_key
     }
@@ -207,9 +209,10 @@ impl<_Data: Data> ReingoldTilfordLayout<_Data> {
     // initialize x to -1, y to depth, and mod to 0 for each node. depth
     // is the depth of the node in the tree. The root node is at depth 0.
     fn initialize_nodes(&self, tree: &mut Tree<_Data>, depth: f64) {
+        let mut nodes_mut = tree.nodes.borrow_mut();
         let mut stack = vec![(tree.root, depth)];
         while let Some((nodekey, depth)) = stack.pop() {
-            let mut node = tree.nodes.get_mut(nodekey).unwrap();
+            let mut node = nodes_mut.get_mut(nodekey).unwrap();
             node.position.x = -1.0;
             node.position.y = depth;
             node.position.modifier = 0.0;
@@ -220,27 +223,60 @@ impl<_Data: Data> ReingoldTilfordLayout<_Data> {
     }
 
     fn calculate_initial_x(&self, tree: &mut Tree<_Data>) {
+        let tree_nodes = tree.nodes.borrow();
+        let mut tree_nodes_mut = tree.nodes.borrow_mut();
         let mut stack = vec![tree.root];
         while let Some(nodekey) = stack.pop() {
-            if is_leaf(nodekey, &tree.nodes) {
-                if is_leftmost_child(nodekey, &tree.nodes) {
-                    let node = tree.nodes.get_mut(nodekey).unwrap();
+            let mut node = tree_nodes_mut.get_mut(nodekey).unwrap();
+
+            // If no children
+            if is_leaf(nodekey, &tree_nodes) {
+                // If this is the first node in a set, set its x to 0
+                if is_leftmost_child(nodekey, &tree_nodes) {
                     node.position.x = 0.0;
+                // Otherwise, set its x to the x of its previous sibling plus the sibling separation
                 } else {
-                    let previous_sibling = get_previous_sibling(nodekey, &tree.nodes).unwrap();
-                    let previous_sibling = tree.nodes.get(previous_sibling).unwrap();
-                    let node = tree.nodes.get_mut(nodekey).unwrap();
-                    node.position.x = previous_sibling.position.x + self.sibling_separation;
+                    let previous_sibling = get_previous_sibling(nodekey, &tree_nodes).unwrap();
+                    let previous_sibling = tree_nodes.get(previous_sibling).unwrap();
+                    node.position.x =
+                        previous_sibling.position.x + node.size.width + self.sibling_separation;
+                }
+            // If there is only one child
+            } else if node.children.len() == 1 {
+                let child = get_leftmost_child(nodekey, &tree_nodes);
+                let child = tree_nodes.get(child).unwrap();
+
+                // if this is the first node in a set, set its X value equal to its child's X value
+                if is_leftmost_child(nodekey, &tree_nodes) {
+                    node.position.x = child.position.x;
+                } else {
+                    // Otherwise, set its x to the x of its previous sibling plus the sibling separation
+                    let previous_sibling = get_previous_sibling(nodekey, &tree_nodes).unwrap();
+                    let previous_sibling = tree_nodes.get(previous_sibling).unwrap();
+                    node.position.x =
+                        previous_sibling.position.x + node.size.width + self.sibling_separation;
+                    node.position.modifier = node.position.x - child.position.x;
                 }
             } else {
-                let leftmost_child = get_leftmost_child(nodekey, &tree.nodes);
-                let rightmost_child = get_rightmost_child(nodekey, &tree.nodes);
-                let leftmost_child = tree.nodes.get(leftmost_child).unwrap();
-                let rightmost_child = tree.nodes.get(rightmost_child).unwrap();
-                let node = tree.nodes.get_mut(nodekey).unwrap();
-                node.position.x = (leftmost_child.position.x + rightmost_child.position.x) / 2.0;
+                let leftmost_child = get_leftmost_child(nodekey, &tree_nodes);
+                let rightmost_child = get_rightmost_child(nodekey, &tree_nodes);
+                let leftmost_child = tree_nodes.get(leftmost_child).unwrap();
+                let rightmost_child = tree_nodes.get(rightmost_child).unwrap();
+                let mid = (leftmost_child.position.x + rightmost_child.position.x) / 2.0;
+
+                // if node is left most child, set its x to the midpoint of its children
+                if is_leftmost_child(nodekey, &tree_nodes) {
+                    node.position.x = mid;
+                } else {
+                    // Otherwise, set its x to the x of its previous sibling plus the sibling separation
+                    let previous_sibling = get_previous_sibling(nodekey, &tree_nodes).unwrap();
+                    let previous_sibling = tree_nodes.get(previous_sibling).unwrap();
+                    node.position.x =
+                        previous_sibling.position.x + node.size.width + self.sibling_separation;
+                    node.position.modifier = node.position.x - mid;
+                }
             }
-            let node = tree.nodes.get(nodekey).unwrap();
+            let node = tree_nodes.get(nodekey).unwrap();
             for child in &node.children {
                 stack.push(*child);
             }
@@ -369,7 +405,7 @@ mod tests {
     fn test_create_tree() {
         let tree = create_test_tree();
         let root = tree.root;
-        let nodes = &tree.nodes;
+        let nodes = &tree.nodes.borrow();
         let root_node = nodes.get(root).unwrap();
         assert_eq!(root_node.data.name, "root");
         assert_eq!(root_node.children.len(), 3);
@@ -380,7 +416,7 @@ mod tests {
     fn test_is_leaf() {
         let tree = create_test_tree();
         let root = tree.root;
-        let nodes = &tree.nodes;
+        let nodes = &tree.nodes.borrow();
         let root_node = nodes.get(root).unwrap();
         assert!(!is_leaf(root, nodes));
         assert!(is_leaf(root_node.children[0], nodes));
@@ -393,7 +429,7 @@ mod tests {
     fn test_is_leftmost_child() {
         let tree = create_test_tree();
         let root = tree.root;
-        let nodes = &tree.nodes;
+        let nodes = &tree.nodes.borrow();
         let root_node = nodes.get(root).unwrap();
         assert!(is_leftmost_child(root_node.children[0], nodes));
         assert!(!is_leftmost_child(root_node.children[1], nodes));
@@ -405,7 +441,7 @@ mod tests {
     fn test_is_rightmost_child() {
         let tree = create_test_tree();
         let root = tree.root;
-        let nodes = &tree.nodes;
+        let nodes = &tree.nodes.borrow();
         let root_node = nodes.get(root).unwrap();
         assert!(!is_rightmost_child(root_node.children[0], nodes));
         assert!(!is_rightmost_child(root_node.children[1], nodes));
@@ -417,7 +453,7 @@ mod tests {
     fn test_get_previous_sibling() {
         let tree = create_test_tree();
         let root = tree.root;
-        let nodes = &tree.nodes;
+        let nodes = &tree.nodes.borrow();
         let root_node = nodes.get(root).unwrap();
         assert_eq!(get_previous_sibling(root_node.children[0], nodes), None);
         assert_eq!(
@@ -435,7 +471,7 @@ mod tests {
     fn test_get_next_sibling() {
         let tree = create_test_tree();
         let root = tree.root;
-        let nodes = &tree.nodes;
+        let nodes = &tree.nodes.borrow();
         let root_node = nodes.get(root).unwrap();
         assert_eq!(
             get_next_sibling(root_node.children[0], nodes),
@@ -453,7 +489,7 @@ mod tests {
     fn test_get_leftmost_sibling() {
         let tree = create_test_tree();
         let root = tree.root;
-        let nodes = &tree.nodes;
+        let nodes = &tree.nodes.borrow();
         let root_node = nodes.get(root).unwrap();
         assert_eq!(
             get_leftmost_sibling(root_node.children[0], nodes),
@@ -474,7 +510,7 @@ mod tests {
     fn test_get_leftmost_child() {
         let tree = create_test_tree();
         let root = tree.root;
-        let nodes = &tree.nodes;
+        let nodes = &tree.nodes.borrow();
         let root_node = nodes.get(root).unwrap();
         assert_eq!(get_leftmost_child(root, nodes), root_node.children[0]);
     }
@@ -484,7 +520,7 @@ mod tests {
     fn test_get_rightmost_child() {
         let tree = create_test_tree();
         let root = tree.root;
-        let nodes = &tree.nodes;
+        let nodes = &tree.nodes.borrow();
         let root_node = nodes.get(root).unwrap();
         assert_eq!(get_rightmost_child(root, nodes), root_node.children[2]);
     }
@@ -499,7 +535,7 @@ mod tests {
         layout.initialize_nodes(&mut tree, 0.0 /*depth*/);
 
         let root = tree.root;
-        let nodes = &tree.nodes;
+        let nodes = &tree.nodes.borrow();
         let root_node = nodes.get(root).unwrap();
         assert_eq!(root_node.position.x, -1.0);
         assert_eq!(root_node.position.modifier, 0.0);
